@@ -55,28 +55,32 @@ class WeatherAgent(BaseAgent):
         today = date.today()
         max_forecast_date = today + timedelta(days=15)
 
-        if start <= max_forecast_date:
-            # Close enough for a real forecast
+        if today <= start <= max_forecast_date:
+            # Near future — use real forecast
+            self.logger.info("Using live forecast (within 15 days)")
             params = {
                 "latitude":         lat,
                 "longitude":        lon,
                 "daily":            "weather_code,temperature_2m_max,temperature_2m_min",
                 "temperature_unit": "celsius",
                 "start_date":       start.isoformat(),
-                "end_date":         min(end, max_forecast_date).isoformat(),
+                "end_date":         end.isoformat(),
                 "timezone":         "auto",
             }
             response = httpx.get(self.FORECAST_URL, params=params, timeout=10)
             response.raise_for_status()
-            return response.json(), False   # False = not historical
+            return response.json(), False
+
         else:
-            # Far future — use same dates last year as a seasonal proxy
+            # Past date OR far future — use same calendar dates from last year
             historical_start = start.replace(year=start.year - 1)
             historical_end   = end.replace(year=end.year - 1)
-            self.logger.info(
-                f"Dates too far ahead for forecast — using {historical_start} "
-                f"to {historical_end} as seasonal proxy"
-            )
+
+            if start < today:
+                self.logger.info(f"Past date — using {historical_start} as historical proxy")
+            else:
+                self.logger.info(f"Far future — using {historical_start} as seasonal proxy")
+
             params = {
                 "latitude":         lat,
                 "longitude":        lon,
@@ -88,7 +92,7 @@ class WeatherAgent(BaseAgent):
             }
             response = httpx.get(self.ARCHIVE_URL, params=params, timeout=10)
             response.raise_for_status()
-            return response.json(), True    # True = historical proxy
+            return response.json(), True
 
     def _parse(self, destination: str, raw: dict, is_historical: bool = False) -> WeatherSummary:
         daily     = raw.get("daily", {})
