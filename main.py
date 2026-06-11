@@ -3,6 +3,7 @@ from src.state.travel_plan import TravelPlan, TravelRequest
 from src.agents.orchestrator import Orchestrator
 from src.agents.weather_agent import WeatherAgent
 from src.config.settings import settings
+from src.agents.flight_agent import FlightAgent
 
 
 def run_pipeline(request: TravelRequest) -> TravelPlan:
@@ -16,6 +17,7 @@ def run_pipeline(request: TravelRequest) -> TravelPlan:
     # (for now only weather exists — others will be added in steps 5-7)
     agent_registry = {
         "weather": WeatherAgent(),
+        "flights": FlightAgent(),
     }
 
     print(f"\nExecution plan: {execution_plan.strategy_notes}\n")
@@ -42,6 +44,18 @@ def print_results(plan: TravelPlan) -> None:
         print(f"\n  Packing tips:")
         for tip in plan.weather.packing_tips:
             print(f"    • {tip}")
+
+    if plan.selected_flight:
+        f = plan.selected_flight
+        print(f"\n✈️  Best flight:")
+        print(f"    {f.airline}")
+        print(f"    Departs: {f.departure_time}  →  Arrives: {f.arrival_time}")
+        print(f"    Duration: {f.duration_hours}h  |  Price: ${f.price_usd:,.2f}")  
+        if f.booking_url:
+            print(f"    Book: {f.booking_url}")
+
+    if plan.flight_options:
+        print(f"\n    ({len(plan.flight_options)} options found total)")
 
     if plan.errors:
         print(f"\n⚠️  Errors:")
