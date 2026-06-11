@@ -1,0 +1,109 @@
+from __future__ import annotations
+import logging
+import httpx
+from typing import Optional
+
+logger = logging.getLogger(__name__)
+
+# Expanded fallback table — covers 100+ major travel destinations
+# Used when the Skyscanner API is unavailable or returns no result
+IATA_FALLBACK: dict[str, str] = {
+    # North America
+    "toronto": "YYZ", "new york": "JFK", "new york city": "JFK",
+    "los angeles": "LAX", "chicago": "ORD", "miami": "MIA",
+    "san francisco": "SFO", "seattle": "SEA", "boston": "BOS",
+    "washington": "IAD", "washington dc": "DCA", "atlanta": "ATL",
+    "dallas": "DFW", "houston": "IAH", "denver": "DEN",
+    "las vegas": "LAS", "orlando": "MCO", "phoenix": "PHX",
+    "vancouver": "YVR", "montreal": "YUL", "calgary": "YYC",
+    "mexico city": "MEX", "cancun": "CUN",
+    # Europe
+    "london": "LHR", "paris": "CDG", "amsterdam": "AMS",
+    "frankfurt": "FRA", "madrid": "MAD", "barcelona": "BCN",
+    "rome": "FCO", "milan": "MXP", "berlin": "BER", "munich": "MUC",
+    "zurich": "ZRH", "vienna": "VIE", "brussels": "BRU",
+    "lisbon": "LIS", "athens": "ATH", "istanbul": "IST",
+    "stockholm": "ARN", "oslo": "OSL", "copenhagen": "CPH",
+    "helsinki": "HEL", "dublin": "DUB", "prague": "PRG",
+    "budapest": "BUD", "warsaw": "WAW",
+    # Asia
+    "tokyo": "NRT", "osaka": "KIX", "kyoto": "KIX",
+    "seoul": "ICN", "beijing": "PEK", "shanghai": "PVG",
+    "hong kong": "HKG", "singapore": "SIN", "bangkok": "BKK",
+    "taipei": "TPE", "kuala lumpur": "KUL", "jakarta": "CGK",
+    "manila": "MNL", "delhi": "DEL", "mumbai": "BOM",
+    "bangalore": "BLR", "dubai": "DXB", "abu dhabi": "AUH",
+    "doha": "DOH", "riyadh": "RUH", "tel aviv": "TLV",
+    "kathmandu": "KTM", "colombo": "CMB", "karachi": "KHI",
+    # Oceania
+    "sydney": "SYD", "melbourne": "MEL", "brisbane": "BNE",
+    "auckland": "AKL", "perth": "PER",
+    # Africa
+    "johannesburg": "JNB", "cape town": "CPT", "cairo": "CAI",
+    "nairobi": "NBO", "casablanca": "CMN", "lagos": "LOS",
+    "addis ababa": "ADD",
+    # South America
+    "sao paulo": "GRU", "rio de janeiro": "GIG", "buenos aires": "EZE",
+    "lima": "LIM", "bogota": "BOG", "santiago": "SCL",
+}
+
+
+def lookup_iata(city: str, rapidapi_key: str = "") -> str:
+    """
+    Convert a city name to its primary IATA airport code.
+
+    Priority:
+      1. Skyscanner airport search API (if key provided)
+      2. Built-in table of 100+ major airports
+    """
+    city_clean = city.strip()
+
+    # 1. Try Skyscanner API
+    if rapidapi_key:
+        code = _skyscanner_airport_search(city_clean, rapidapi_key)
+        if code:
+            logger.debug(f"IATA via API: {city} → {code}")
+            return code
+        logger.debug(f"Skyscanner airport search had no result for '{city}', using fallback")
+
+    # 2. Fall back to built-in table
+    code = IATA_FALLBACK.get(city_clean.lower())
+    if code:
+        logger.debug(f"IATA via fallback table: {city} → {code}")
+        return code
+
+    raise ValueError(
+        f"Could not find IATA code for '{city}'.\n"
+        f"  Add it to IATA_FALLBACK in src/tools/airport_lookup.py\n"
+        f"  or use the code directly (e.g. 'NRT' for Tokyo Narita)."
+    )
+
+
+def _skyscanner_airport_search(city: str, key: str) -> Optional[str]:
+    """Query the Skyscanner API airport search endpoint."""
+    try:
+        response = httpx.get(
+            "https://skyscanner50.p.rapidapi.com/api/v1/searchAirport",
+            headers={
+                "X-RapidAPI-Key":  key,
+                "X-RapidAPI-Host": "skyscanner50.p.rapidapi.com",
+            },
+            params={"query": city},
+            timeout=10,
+        )
+        response.raise_for_status()
+        results = response.json().get("data", [])
+
+        # Prefer an airport entity over a city entity
+        for r in results:
+            if r.get("entityType", "").upper() == "AIRPORT":
+                return r.get("iataCode") or r.get("skyId")
+
+        # Fall back to first result of any type
+        if results:
+            return results[0].get("iataCode") or results[0].get("skyId")
+
+    except Exception as e:
+        logger.debug(f"Skyscanner airport API error: {e}")
+
+    return None

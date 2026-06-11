@@ -15,15 +15,23 @@ class TravelRequest(BaseModel):
     budget_usd: float
     travelers: int = 1
     interests: list[str] = Field(default_factory=list)
+    trip_type: str = "roundtrip"
+    intermediate_stops: list[str] = Field(default_factory=list)
 
 
 # ── Per-agent result models ──────────────────────────────────────────────────
 
-class FlightOption(BaseModel):
+class FlightLeg(BaseModel):
     airline: str
+    origin: str
+    destination: str
     departure_time: str
     arrival_time: str
     duration_hours: float
+
+class FlightOption(BaseModel):
+    trip_type: str = "roundtrip"
+    legs: list[FlightLeg] = Field(default_factory=list)
     price_usd: float
     booking_url: Optional[str] = None
 
