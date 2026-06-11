@@ -6,8 +6,8 @@ def test_travel_plan_creation():
         request=TravelRequest(
             destination="Tokyo",
             origin="Toronto",
-            departure_date=date(2025, 8, 1),
-            return_date=date(2025, 8, 10),
+            departure_date=date(2026, 8, 1),
+            return_date=date(2026, 8, 10),
             budget_usd=4000.0,
             travelers=1,
             interests=["food", "temples", "hiking"]
@@ -22,8 +22,8 @@ def test_mark_complete():
         request=TravelRequest(
             destination="Tokyo",
             origin="Toronto",
-            departure_date=date(2025, 8, 1),
-            return_date=date(2025, 8, 10),
+            departure_date=date(2026, 8, 1),
+            return_date=date(2026, 8, 10),
             budget_usd=4000.0,
         )
     )
@@ -37,8 +37,8 @@ def test_error_tracking():
         request=TravelRequest(
             destination="Tokyo",
             origin="Toronto",
-            departure_date=date(2025, 8, 1),
-            return_date=date(2025, 8, 10),
+            departure_date=date(2026, 8, 1),
+            return_date=date(2026, 8, 10),
             budget_usd=4000.0,
         )
     )

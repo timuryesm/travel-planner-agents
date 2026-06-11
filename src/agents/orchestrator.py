@@ -1,6 +1,7 @@
 from __future__ import annotations
 import json
 import anthropic
+import logging
 from pydantic import BaseModel
 from src.state.travel_plan import TravelPlan, TravelRequest
 from src.config.settings import settings
@@ -42,7 +43,7 @@ Rules:
 - flights and hotels have no dependencies on each other
 - activities should run after weather (weather affects recommendations)
 
-Respond with ONLY valid JSON matching this exact structure, no other text:
+Respond with ONLY valid JSON. No markdown, no backticks, no explanation. Raw JSON only:
 {
   "tasks": [
     {
@@ -56,6 +57,7 @@ Respond with ONLY valid JSON matching this exact structure, no other text:
 
     def __init__(self):
         self.client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+        self.logger = logging.getLogger(self.__class__.__name__)
 
     def create_plan(self, plan: TravelPlan) -> ExecutionPlan:
         """Ask Claude to produce a structured execution plan for this travel request."""
@@ -78,6 +80,7 @@ Produce the execution plan."""
         )
 
         raw = response.content[0].text
+        self.logger.info(f"Raw plan response: {repr(raw[:200])}")
 
         try:
             data = json.loads(raw)
