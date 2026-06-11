@@ -73,10 +73,10 @@ def _print_flight(f: "FlightOption") -> None:
         out, ret = f.legs[0], f.legs[1]
         print(f"    {out.airline}")
         print(f"    Outbound : {out.origin} → {out.destination}")
-        print(f"               Departs {out.departure_time}  "
-              f"Arrives {out.arrival_time}  ({out.duration_hours}h)")
+        print(f"               Departs {out.departure_time} local"
+              f"Arrives {out.arrival_time} local ({out.duration_hours}h)")
         print(f"    Return   : {ret.origin} → {ret.destination}")
-        print(f"               Departs {ret.departure_time}  "
+        print(f"               Departs {ret.departure_time} local"
               f"Arrives {ret.arrival_time}  ({ret.duration_hours}h)")
         print(f"    Total price: ${f.price_usd:,.2f}")
 
