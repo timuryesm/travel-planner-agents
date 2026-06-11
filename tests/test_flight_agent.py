@@ -45,10 +45,10 @@ def test_booking_url_format():
     result = FlightAgent().safe_run(make_plan("roundtrip"))
     url = result.selected_flight.booking_url
     assert "skyscanner.com" in url
-    assert "yyza" in url     # Toronto IATA + 'a'
-    assert "nrta" in url     # Tokyo IATA + 'a'
-    assert "260801" in url   # Aug 1 2026 in YYMMDD
-    assert "260810" in url   # Aug 10 2026 in YYMMDD
+    assert "ytoa" in url      # Toronto city code (YTO) + 'a'
+    assert "tyoa" in url      # Tokyo city code (TYO) + 'a'
+    assert "260801" in url    # Aug 1 2026
+    assert "260810" in url    # Aug 10 2026
 
 
 def test_selected_is_cheapest_affordable():

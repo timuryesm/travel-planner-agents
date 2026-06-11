@@ -107,3 +107,56 @@ def _skyscanner_airport_search(city: str, key: str) -> Optional[str]:
         logger.debug(f"Skyscanner airport API error: {e}")
 
     return None
+
+
+# Skyscanner URLs use city-level codes, not airport codes
+# e.g. Toronto = YTO (not YYZ), Tokyo = TYO (not NRT), London = LON (not LHR)
+SKYSCANNER_CITY_CODES: dict[str, str] = {
+    # North America
+    "toronto": "YTO", "new york": "NYC", "new york city": "NYC",
+    "chicago": "CHI", "los angeles": "LAX", "san francisco": "SFO",
+    "miami": "MIA", "washington": "WAS", "washington dc": "WAS",
+    "boston": "BOS", "seattle": "SEA", "denver": "DEN",
+    "atlanta": "ATL", "dallas": "DFW", "houston": "HOU",
+    "las vegas": "LAS", "orlando": "ORL", "phoenix": "PHX",
+    "vancouver": "YVR", "montreal": "YMQ", "calgary": "YYC",
+    "mexico city": "MEX", "cancun": "CUN",
+    # Europe
+    "london": "LON", "paris": "PAR", "amsterdam": "AMS",
+    "frankfurt": "FRA", "madrid": "MAD", "barcelona": "BCN",
+    "rome": "ROM", "milan": "MIL", "berlin": "BER", "munich": "MUC",
+    "zurich": "ZRH", "vienna": "VIE", "brussels": "BRU",
+    "lisbon": "LIS", "athens": "ATH", "istanbul": "IST",
+    "stockholm": "STO", "oslo": "OSL", "copenhagen": "CPH",
+    "helsinki": "HEL", "dublin": "DUB", "prague": "PRG",
+    "budapest": "BUD", "warsaw": "WAW",
+    # Asia
+    "tokyo": "TYO", "osaka": "OSA", "kyoto": "OSA",
+    "seoul": "SEL", "beijing": "BJS", "shanghai": "SHA",
+    "hong kong": "HKG", "singapore": "SIN", "bangkok": "BKK",
+    "taipei": "TPE", "kuala lumpur": "KUL", "jakarta": "JKT",
+    "manila": "MNL", "delhi": "DEL", "mumbai": "BOM",
+    "dubai": "DXB", "abu dhabi": "AUH", "doha": "DOH",
+    # Oceania
+    "sydney": "SYD", "melbourne": "MEL", "brisbane": "BNE",
+    "auckland": "AKL", "perth": "PER",
+    # Africa
+    "johannesburg": "JNB", "cape town": "CPT", "cairo": "CAI",
+    "nairobi": "NBO",
+    # South America
+    "sao paulo": "SAO", "rio de janeiro": "RIO", "buenos aires": "BUE",
+    "lima": "LIM", "bogota": "BOG", "santiago": "SCL",
+}
+
+
+def city_to_skyscanner_code(city: str) -> str:
+    """
+    Return the Skyscanner city code used in booking URLs.
+    Different from the airport IATA for multi-airport cities:
+      Toronto → YTO (not YYZ), Tokyo → TYO (not NRT), London → LON (not LHR)
+    """
+    code = SKYSCANNER_CITY_CODES.get(city.lower().strip())
+    if code:
+        return code
+    # Single-airport cities: airport IATA works as city code too
+    return IATA_FALLBACK.get(city.lower().strip(), city.upper()[:3])

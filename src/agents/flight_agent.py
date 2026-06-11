@@ -1,10 +1,10 @@
 from __future__ import annotations
 import httpx
 import random
-from datetime import date
+from datetime import date, datetime, timedelta
 from src.agents.base_agent import BaseAgent
 from src.state.travel_plan import TravelPlan, FlightOption, FlightLeg
-from src.tools.airport_lookup import lookup_iata
+from src.tools.airport_lookup import lookup_iata, city_to_skyscanner_code
 from src.config.settings import settings
 
 
@@ -34,6 +34,7 @@ class FlightAgent(BaseAgent):
             try:
                 options = self._search_skyscanner(
                     origin_iata, dest_iata,
+                    req.origin, req.destination,
                     req.departure_date, req.return_date,
                     req.travelers, req.trip_type,
                 )
@@ -42,7 +43,6 @@ class FlightAgent(BaseAgent):
                 self.logger.warning(f"Skyscanner failed ({e}) — using mock data")
                 options = self._mock_flights(
                     req.origin, req.destination,
-                    origin_iata, dest_iata,
                     req.departure_date, req.return_date,
                     req.trip_type, req.budget_usd, req.travelers,
                 )
@@ -50,7 +50,6 @@ class FlightAgent(BaseAgent):
             self.logger.info("No RapidAPI key — using mock flight data")
             options = self._mock_flights(
                 req.origin, req.destination,
-                origin_iata, dest_iata,
                 req.departure_date, req.return_date,
                 req.trip_type, req.budget_usd, req.travelers,
             )
@@ -65,15 +64,24 @@ class FlightAgent(BaseAgent):
 
     def _search_skyscanner(
         self,
-        origin: str, destination: str,
-        depart_date: date, return_date: date,
-        adults: int, trip_type: str,
+        origin_iata: str,
+        dest_iata: str,
+        origin_city: str,
+        dest_city: str,
+        depart_date: date,
+        return_date: date,
+        adults: int,
+        trip_type: str,
     ) -> list[FlightOption]:
         params = {
-            "origin": origin, "destination": destination,
-            "date": depart_date.isoformat(), "adults": adults,
-            "currency": "USD", "countryCode": "US",
-            "market": "US", "locale": "en-US",
+            "origin":      origin_iata,
+            "destination": dest_iata,
+            "date":        depart_date.isoformat(),
+            "adults":      adults,
+            "currency":    "USD",
+            "countryCode": "US",
+            "market":      "US",
+            "locale":      "en-US",
         }
         if trip_type == "roundtrip":
             params["returnDate"] = return_date.isoformat()
@@ -84,19 +92,26 @@ class FlightAgent(BaseAgent):
                 "X-RapidAPI-Key":  settings.RAPIDAPI_KEY,
                 "X-RapidAPI-Host": self.RAPIDAPI_HOST,
             },
-            params=params, timeout=15,
+            params=params,
+            timeout=15,
         )
         response.raise_for_status()
         return self._parse_skyscanner(
-            response.json(), origin, destination,
-            depart_date, return_date, adults, trip_type,
+            response.json(),
+            origin_city, dest_city,
+            depart_date, return_date,
+            adults, trip_type,
         )
 
     def _parse_skyscanner(
-        self, raw: dict,
-        origin: str, destination: str,
-        depart_date: date, return_date: date,
-        adults: int, trip_type: str,
+        self,
+        raw: dict,
+        origin_city: str,
+        dest_city: str,
+        depart_date: date,
+        return_date: date,
+        adults: int,
+        trip_type: str,
     ) -> list[FlightOption]:
         options: list[FlightOption] = []
         for it in raw.get("data", {}).get("itineraries", [])[:10]:
@@ -104,12 +119,15 @@ class FlightAgent(BaseAgent):
                 price = float(it.get("price", {}).get("raw", 0))
                 legs: list[FlightLeg] = []
                 for leg in it.get("legs", []):
-                    airline = (leg.get("carriers", {})
-                                  .get("marketing", [{}])[0]
-                                  .get("name", "Unknown"))
+                    airline = (
+                        leg.get("carriers", {})
+                           .get("marketing", [{}])[0]
+                           .get("name", "Unknown")
+                    )
                     legs.append(FlightLeg(
                         airline=airline,
-                        origin=origin, destination=destination,
+                        origin=origin_city,
+                        destination=dest_city,
                         departure_time=leg.get("departure", "")[:16],
                         arrival_time=leg.get("arrival", "")[:16],
                         duration_hours=round(
@@ -117,9 +135,12 @@ class FlightAgent(BaseAgent):
                         ),
                     ))
                 options.append(FlightOption(
-                    trip_type=trip_type, legs=legs, price_usd=price,
+                    trip_type=trip_type,
+                    legs=legs,
+                    price_usd=price,
                     booking_url=self._build_booking_url(
-                        origin, destination, depart_date, return_date,
+                        origin_city, dest_city,
+                        depart_date, return_date,
                         trip_type, adults,
                     ),
                 ))
@@ -131,16 +152,20 @@ class FlightAgent(BaseAgent):
 
     def _build_booking_url(
         self,
-        origin_iata: str, dest_iata: str,
-        depart_date: date, return_date: date,
-        trip_type: str, adults: int,
+        origin_city: str,
+        dest_city: str,
+        depart_date: date,
+        return_date: date,
+        trip_type: str,
+        adults: int,
     ) -> str:
         """
         Build a working Skyscanner search URL.
-        Format: /transport/flights/{origin}a/{dest}a/{YYMMDD}/{YYMMDD}/
+        Uses city-level codes (YTO, TYO) not airport codes (YYZ, NRT).
+        Format: skyscanner.com/transport/flights/{city}a/{city}a/YYMMDD/YYMMDD/
         """
-        orig = origin_iata.lower() + "a"
-        dest = dest_iata.lower() + "a"
+        orig = city_to_skyscanner_code(origin_city).lower() + "a"
+        dest = city_to_skyscanner_code(dest_city).lower() + "a"
         dep  = depart_date.strftime("%y%m%d")
 
         if trip_type == "one_way":
@@ -156,35 +181,46 @@ class FlightAgent(BaseAgent):
                 f"{orig}/{dest}/{dep}/{ret}/"
                 f"?adultsv2={adults}&cabinclass=economy&rtn=1"
             )
-        else:  # multi_city
+        else:
             return "https://www.skyscanner.com/flights-multi-city.aspx"
 
     # ── Mock data ────────────────────────────────────────────────────────
 
     def _mock_flights(
         self,
-        origin: str, destination: str,
-        origin_iata: str, dest_iata: str,
-        depart_date: date, return_date: date,
-        trip_type: str, budget: float, travelers: int,
+        origin: str,
+        destination: str,
+        depart_date: date,
+        return_date: date,
+        trip_type: str,
+        budget: float,
+        travelers: int,
     ) -> list[FlightOption]:
+        """Generate realistic mock flight options with correct date arithmetic."""
         base_price, base_dur = self._estimate_route(origin, destination)
-        airlines = ["Air Canada", "Japan Airlines", "ANA",
-                    "United Airlines", "British Airways",
-                    "Cathay Pacific", "Korean Air"]
+        airlines = [
+            "Air Canada", "Japan Airlines", "ANA",
+            "United Airlines", "British Airways",
+            "Cathay Pacific", "Korean Air",
+        ]
         options = []
 
         for i in range(5):
-            mult     = random.uniform(0.85, 1.20)
-            dur      = round(base_dur + random.uniform(-1.5, 1.5), 1)
-            dep_h    = 8 + (i * 3)
-            dep_str  = f"{depart_date}T{dep_h:02d}:00"
-            arr_str  = f"{depart_date}T{(dep_h + int(dur)) % 24:02d}:30"
-            airline  = airlines[i % len(airlines)]
+            mult    = random.uniform(0.85, 1.20)
+            dur     = round(base_dur + random.uniform(-1.5, 1.5), 1)
+            dep_h   = 8 + (i * 3)
+            airline = airlines[i % len(airlines)]
+
+            # Use datetime arithmetic so arrival rolls over to the next day correctly
+            dep_dt  = datetime(depart_date.year, depart_date.month, depart_date.day, dep_h, 0)
+            arr_dt  = dep_dt + timedelta(hours=dur)
 
             outbound = FlightLeg(
-                airline=airline, origin=origin, destination=destination,
-                departure_time=dep_str, arrival_time=arr_str,
+                airline=airline,
+                origin=origin,
+                destination=destination,
+                departure_time=dep_dt.strftime("%Y-%m-%dT%H:%M"),  # string, not datetime
+                arrival_time=arr_dt.strftime("%Y-%m-%dT%H:%M"),    # string, not datetime
                 duration_hours=dur,
             )
 
@@ -194,34 +230,42 @@ class FlightAgent(BaseAgent):
 
             elif trip_type == "roundtrip":
                 ret_h   = 9 + (i * 2)
-                ret_dep = f"{return_date}T{ret_h:02d}:00"
-                ret_arr = f"{return_date}T{(ret_h + int(dur)) % 24:02d}:30"
-                legs  = [
+                ret_dep = datetime(return_date.year, return_date.month, return_date.day, ret_h, 0)
+                ret_arr = ret_dep + timedelta(hours=dur)
+                legs = [
                     outbound,
                     FlightLeg(
                         airline=airline,
-                        origin=destination, destination=origin,
-                        departure_time=ret_dep, arrival_time=ret_arr,
+                        origin=destination,
+                        destination=origin,
+                        departure_time=ret_dep.strftime("%Y-%m-%dT%H:%M"),  # string
+                        arrival_time=ret_arr.strftime("%Y-%m-%dT%H:%M"),    # string
                         duration_hours=dur,
                     ),
                 ]
                 price = round(base_price * 1.85 * mult * travelers, 2)
 
-            else:  # multi_city (simplified)
+            else:  # multi_city
                 legs  = [outbound]
                 price = round(base_price * 1.5 * mult * travelers, 2)
 
             options.append(FlightOption(
-                trip_type=trip_type, legs=legs, price_usd=price,
+                trip_type=trip_type,
+                legs=legs,
+                price_usd=price,
                 booking_url=self._build_booking_url(
-                    origin_iata, dest_iata, depart_date, return_date,
+                    origin, destination,
+                    depart_date, return_date,
                     trip_type, travelers,
                 ),
             ))
 
         return options
 
+    # ── Helpers ──────────────────────────────────────────────────────────
+
     def _estimate_route(self, origin: str, dest: str) -> tuple[float, float]:
+        """Return (base_price_usd, base_duration_hours) for a route."""
         long_haul = {
             "toronto-tokyo", "toronto-osaka", "toronto-seoul",
             "toronto-beijing", "toronto-shanghai", "toronto-singapore",
