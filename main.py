@@ -1,14 +1,59 @@
 from datetime import date
 from src.state.travel_plan import TravelPlan, TravelRequest
 from src.agents.orchestrator import Orchestrator
+from src.agents.weather_agent import WeatherAgent
 from src.config.settings import settings
 
 
+def run_pipeline(request: TravelRequest) -> TravelPlan:
+    plan = TravelPlan(request=request)
+
+    # Step 1: orchestrator plans
+    orchestrator = Orchestrator()
+    execution_plan = orchestrator.create_plan(plan)
+
+    # Step 2: run agents in order
+    # (for now only weather exists — others will be added in steps 5-7)
+    agent_registry = {
+        "weather": WeatherAgent(),
+    }
+
+    print(f"\nExecution plan: {execution_plan.strategy_notes}\n")
+
+    for task in execution_plan.tasks:
+        agent = agent_registry.get(task.agent)
+        if agent:
+            plan = agent.safe_run(plan)
+        else:
+            print(f"  ⏭  {task.agent} agent not implemented yet — skipping")
+
+    return plan
+
+
+def print_results(plan: TravelPlan) -> None:
+    print("\n" + "=" * 60)
+    print("RESULTS")
+    print("=" * 60)
+
+    if plan.weather:
+        print(f"\n🌤  Weather in {plan.weather.location}:")
+        for day, forecast in plan.weather.forecast_by_day.items():
+            print(f"    {day}: {forecast}")
+        print(f"\n  Packing tips:")
+        for tip in plan.weather.packing_tips:
+            print(f"    • {tip}")
+
+    if plan.errors:
+        print(f"\n⚠️  Errors:")
+        for err in plan.errors:
+            print(f"    {err}")
+
+    print(f"\n✓ Completed agents: {', '.join(plan.completed_agents)}")
+
+
 def main():
-    # Validate API keys are present before doing anything
     settings.validate()
 
-    # Build a sample travel request
     request = TravelRequest(
         destination="Tokyo",
         origin="Toronto",
@@ -16,10 +61,8 @@ def main():
         return_date=date(2025, 8, 10),
         budget_usd=4000.0,
         travelers=1,
-        interests=["food", "temples", "hiking"]
+        interests=["food", "temples", "hiking"],
     )
-
-    plan = TravelPlan(request=request)
 
     print("=" * 60)
     print(f"Planning trip: {request.origin} → {request.destination}")
@@ -28,19 +71,8 @@ def main():
     print(f"Interests: {', '.join(request.interests)}")
     print("=" * 60)
 
-    orchestrator = Orchestrator()
-
-    print("\nOrchestrator is planning...\n")
-    execution_plan = orchestrator.create_plan(plan)
-
-    print(f"Strategy: {execution_plan.strategy_notes}\n")
-    print("Execution order:")
-    for i, task in enumerate(execution_plan.tasks, 1):
-        deps = f"  (after: {', '.join(task.depends_on)})" if task.depends_on else ""
-        print(f"  {i}. {task.agent:<12} — {task.reason}{deps}")
-
-    print("\n✓ Orchestrator planning complete.")
-    print("  (Agents will be wired in Steps 4–7)")
+    plan = run_pipeline(request)
+    print_results(plan)
 
 
 if __name__ == "__main__":
