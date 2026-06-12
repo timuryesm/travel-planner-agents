@@ -17,6 +17,8 @@ class TravelRequest(BaseModel):
     interests: list[str] = Field(default_factory=list)
     trip_type: str = "roundtrip"
     intermediate_stops: list[str] = Field(default_factory=list)
+    accommodation_type: str = "any"
+    # "any" | "hotel" | "apartment" | "hostel" | "villa" | "resort" | "guesthouse"
 
 
 # ── Per-agent result models ──────────────────────────────────────────────────
@@ -43,6 +45,8 @@ class HotelOption(BaseModel):
     price_per_night_usd: float
     total_price_usd: float
     booking_url: Optional[str] = None
+    property_type: str = "hotel"
+    provider: str = "booking.com"
 
 
 class Activity(BaseModel):

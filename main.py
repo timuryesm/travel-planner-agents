@@ -5,6 +5,7 @@ from src.agents.weather_agent import WeatherAgent
 from src.config.settings import settings
 from src.agents.flight_agent import FlightAgent
 from src.state.travel_plan import TravelPlan, TravelRequest, FlightOption
+from src.agents.hotel_agent import HotelAgent
 
 
 def run_pipeline(request: TravelRequest) -> TravelPlan:
@@ -19,6 +20,7 @@ def run_pipeline(request: TravelRequest) -> TravelPlan:
     agent_registry = {
         "weather": WeatherAgent(),
         "flights": FlightAgent(),
+        "hotels":     HotelAgent(),
     }
 
     print(f"\nExecution plan: {execution_plan.strategy_notes}\n")
@@ -53,6 +55,24 @@ def print_results(plan: TravelPlan) -> None:
         if plan.flight_options:
             print(f"    ({len(plan.flight_options)} options found total)")
 
+    if plan.selected_hotel:
+        h     = plan.selected_hotel
+        stars = "★" * int(h.stars or 0) if h.stars else "unrated"
+        nights = (plan.request.return_date - plan.request.departure_date).days
+        print(f"\n🏨  Best {h.property_type} ({h.provider}):")
+        print(f"    {h.name}  {stars}")
+        print(f"    {h.location}")
+        print(f"    ${h.price_per_night_usd:,.2f}/night  ·  "
+              f"{nights} nights  ·  Total ${h.total_price_usd:,.2f}")
+        if h.booking_url:
+            print(f"    Book: {h.booking_url}")
+    if plan.hotel_options:
+        types = {}
+        for opt in plan.hotel_options:
+            types[opt.property_type] = types.get(opt.property_type, 0) + 1
+        summary = ", ".join(f"{v} {k}" for k, v in types.items())
+        print(f"    ({len(plan.hotel_options)} options: {summary})")
+
     if plan.errors:
         print(f"\n⚠️  Errors:")
         for err in plan.errors:
@@ -74,10 +94,10 @@ def _print_flight(f: "FlightOption") -> None:
         print(f"    {out.airline}")
         print(f"    Outbound : {out.origin} → {out.destination}")
         print(f"               Departs {out.departure_time} local"
-              f"Arrives {out.arrival_time} local ({out.duration_hours}h)")
+              f"  →  Arrives {out.arrival_time} local  ({out.duration_hours}h)")
         print(f"    Return   : {ret.origin} → {ret.destination}")
         print(f"               Departs {ret.departure_time} local"
-              f"Arrives {ret.arrival_time}  ({ret.duration_hours}h)")
+              f"  →  Arrives {ret.arrival_time} local  ({ret.duration_hours}h)")
         print(f"    Total price: ${f.price_usd:,.2f}")
 
     elif f.trip_type == "multi_city":
@@ -102,6 +122,7 @@ def main():
         budget_usd=4000.0,
         travelers=1,
         interests=["food", "temples", "hiking"],
+        accommodation_type="any",   # try: "hotel", "apartment", "hostel", "any"
     )
 
     print("=" * 60)
