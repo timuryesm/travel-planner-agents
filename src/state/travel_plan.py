@@ -19,6 +19,8 @@ class TravelRequest(BaseModel):
     intermediate_stops: list[str] = Field(default_factory=list)
     accommodation_type: str = "any"
     # "any" | "hotel" | "apartment" | "hostel" | "villa" | "resort" | "guesthouse"
+    accommodation_providers: list[str] = Field(default_factory=lambda: ["booking.com"])
+    # Options: ["booking.com"], ["airbnb"], ["booking.com", "airbnb"]
 
 
 # ── Per-agent result models ──────────────────────────────────────────────────

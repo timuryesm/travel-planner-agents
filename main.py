@@ -6,29 +6,38 @@ from src.config.settings import settings
 from src.agents.flight_agent import FlightAgent
 from src.state.travel_plan import TravelPlan, TravelRequest, FlightOption
 from src.agents.hotel_agent import HotelAgent
-
+from src.agents.airbnb_agent import AirbnbAgent
 
 def run_pipeline(request: TravelRequest) -> TravelPlan:
     plan = TravelPlan(request=request)
-
-    # Step 1: orchestrator plans
     orchestrator = Orchestrator()
     execution_plan = orchestrator.create_plan(plan)
 
-    # Step 2: run agents in order
-    # (for now only weather exists — others will be added in steps 5-7)
+    # Agents that map 1:1 with orchestrator task names
     agent_registry = {
-        "weather": WeatherAgent(),
-        "flights": FlightAgent(),
-        "hotels":     HotelAgent(),
+        "weather":    WeatherAgent(),
+        "flights":    FlightAgent(),
+        "activities": None,   # Step 7
+        "budget":     None,   # Step 7
     }
 
     print(f"\nExecution plan: {execution_plan.strategy_notes}\n")
 
     for task in execution_plan.tasks:
-        agent = agent_registry.get(task.agent)
-        if agent:
-            plan = agent.safe_run(plan)
+
+        # "hotels" maps to one or more providers based on user preference
+        if task.agent == "hotels":
+            providers = request.accommodation_providers
+            if "booking.com" in providers or "all" in providers:
+                plan = HotelAgent().safe_run(plan)
+            if "airbnb" in providers or "all" in providers:
+                plan = AirbnbAgent().safe_run(plan)
+            if not plan.hotel_options:
+                print(f"  ⚠️  No accommodation results from any provider")
+
+        elif task.agent in agent_registry and agent_registry[task.agent]:
+            plan = agent_registry[task.agent].safe_run(plan)
+
         else:
             print(f"  ⏭  {task.agent} agent not implemented yet — skipping")
 
@@ -56,22 +65,26 @@ def print_results(plan: TravelPlan) -> None:
             print(f"    ({len(plan.flight_options)} options found total)")
 
     if plan.selected_hotel:
-        h     = plan.selected_hotel
-        stars = "★" * int(h.stars or 0) if h.stars else "unrated"
+        h      = plan.selected_hotel
+        stars  = "★" * int(h.stars or 0) if h.stars else "no rating"
         nights = (plan.request.return_date - plan.request.departure_date).days
-        print(f"\n🏨  Best {h.property_type} ({h.provider}):")
+        icon   = "🏠" if h.provider == "airbnb" else "🏨"
+        print(f"\n{icon}  Best {h.property_type} · via {h.provider}:")
         print(f"    {h.name}  {stars}")
         print(f"    {h.location}")
         print(f"    ${h.price_per_night_usd:,.2f}/night  ·  "
               f"{nights} nights  ·  Total ${h.total_price_usd:,.2f}")
         if h.booking_url:
             print(f"    Book: {h.booking_url}")
+
     if plan.hotel_options:
-        types = {}
+        by_provider: dict[str, int] = {}
         for opt in plan.hotel_options:
-            types[opt.property_type] = types.get(opt.property_type, 0) + 1
-        summary = ", ".join(f"{v} {k}" for k, v in types.items())
-        print(f"    ({len(plan.hotel_options)} options: {summary})")
+            by_provider[opt.provider] = by_provider.get(opt.provider, 0) + 1
+        summary = "  |  ".join(
+            f"{v} from {k}" for k, v in by_provider.items()
+        )
+        print(f"    ({len(plan.hotel_options)} total: {summary})")
 
     if plan.errors:
         print(f"\n⚠️  Errors:")
@@ -123,6 +136,7 @@ def main():
         travelers=1,
         interests=["food", "temples", "hiking"],
         accommodation_type="any",   # try: "hotel", "apartment", "hostel", "any"
+        accommodation_providers=["booking.com", "airbnb"]
     )
 
     print("=" * 60)

@@ -55,8 +55,9 @@ class HotelAgent(BaseAgent):
                 req.return_date, nights, req.budget_usd, acc,
             )
 
-        plan.hotel_options  = options
-        plan.selected_hotel = self._select_best(options, req.budget_usd)
+        existing           = plan.hotel_options or []
+        plan.hotel_options = existing + options
+        plan.selected_hotel = self._select_best(plan.hotel_options, req.budget_usd)
         plan.mark_complete(self.name)
         return plan
 
