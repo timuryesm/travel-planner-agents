@@ -10,7 +10,7 @@ from src.config.settings import settings
 class AirbnbAgent(BaseAgent):
 
     name = "airbnb"
-    RAPIDAPI_HOST = "airbnb13.p.rapidapi.com"
+    RAPIDAPI_HOST = "airbnb19.p.rapidapi.com"
 
     # Airbnb room types with display labels
     ROOM_TYPES = {

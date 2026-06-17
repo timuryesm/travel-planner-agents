@@ -21,7 +21,7 @@ PROPERTY_TYPE_IDS: dict[str, int] = {
 class HotelAgent(BaseAgent):
 
     name = "hotels"
-    RAPIDAPI_HOST = "booking-com15.p.rapidapi.com"
+    RAPIDAPI_HOST = "apidojo-booking-v1.p.rapidapi.com"
 
     def run(self, plan: TravelPlan) -> TravelPlan:
         req    = plan.request
@@ -65,22 +65,30 @@ class HotelAgent(BaseAgent):
 
     def _get_destination_id(self, city: str) -> str:
         response = httpx.get(
-            f"https://{self.RAPIDAPI_HOST}/api/v1/hotels/searchDestination",
+            f"https://{self.RAPIDAPI_HOST}/locations/auto-complete",
             headers={
                 "X-RapidAPI-Key":  settings.RAPIDAPI_KEY,
                 "X-RapidAPI-Host": self.RAPIDAPI_HOST,
             },
-            params={"query": city},
+            params={
+                "text":         city,
+                "languagecode": "en-us",
+            },
             timeout=10,
         )
         response.raise_for_status()
-        results = response.json().get("data", [])
+        results = response.json()
         if not results:
             raise ValueError(f"No Booking.com destination found for '{city}'")
+
+        # apidojo returns a flat list
         for r in results:
-            if r.get("search_type") == "city":
-                self.logger.info(f"Destination ID: {r['dest_id']} ({r.get('label', city)})")
+            if r.get("dest_type") == "city":
+                self.logger.info(
+                    f"Destination ID: {r['dest_id']} ({r.get('label', city)})"
+                )
                 return str(r["dest_id"])
+
         return str(results[0]["dest_id"])
 
     def _search_hotels(
@@ -94,22 +102,21 @@ class HotelAgent(BaseAgent):
         accommodation_type: str,
     ) -> list[HotelOption]:
         params: dict = {
-            "dest_id":        dest_id,
-            "search_type":    "city",
-            "arrival_date":   checkin.isoformat(),
+            "dest_id":       dest_id,
+            "dest_type":     "city",
+            "arrival_date":  checkin.isoformat(),
             "departure_date": checkout.isoformat(),
-            "adults":         adults,
-            "room_qty":       1,
-            "currency_code":  "USD",
-            "languagecode":   "en-us",
-            "units":          "metric",
+            "adults_number": adults,
+            "room_number":   1,
+            "units":         "metric",
+            "locale":        "en-gb",
+            "currency_code": "USD",
         }
-        # Add property type filter when not "any"
         if accommodation_type != "any" and accommodation_type in PROPERTY_TYPE_IDS:
             params["property_type_id"] = PROPERTY_TYPE_IDS[accommodation_type]
 
         response = httpx.get(
-            f"https://{self.RAPIDAPI_HOST}/api/v1/hotels/searchHotels",
+            f"https://{self.RAPIDAPI_HOST}/properties/list",
             headers={
                 "X-RapidAPI-Key":  settings.RAPIDAPI_KEY,
                 "X-RapidAPI-Host": self.RAPIDAPI_HOST,
@@ -134,22 +141,30 @@ class HotelAgent(BaseAgent):
         accommodation_type: str,
     ) -> list[HotelOption]:
         options: list[HotelOption] = []
-        for h in raw.get("data", {}).get("hotels", [])[:10]:
+
+        # apidojo returns results under "result" key
+        hotels = raw.get("result", [])
+
+        if hotels:
+            self.logger.info(f"Sample hotel keys: {list(hotels[0].keys())}")
+            self.logger.info(f"Sample price data: {hotels[0].get('min_total_price')} | {hotels[0].get('composite_price_breakdown', {})}")
+        else:
+            self.logger.info(f"Raw response keys: {list(raw.keys())}")
+
+        for h in hotels[:10]:
             try:
-                prop        = h.get("property", {})
-                name        = prop.get("name", "Unknown")
-                stars       = prop.get("accuratePropertyClass")
-                price_block = prop.get("priceBreakdown", {})
-                total_price = float(
-                    price_block.get("grossPrice", {}).get("value", 0)
-                )
+                name        = h.get("hotel_name", "Unknown Hotel")
+                stars       = h.get("class")
+                total_price = float(h.get("min_total_price", 0))
+
                 if total_price <= 0:
                     continue
+
                 per_night = round(total_price / nights, 2) if nights > 0 else total_price
 
                 options.append(HotelOption(
                     name=name,
-                    location=destination,
+                    location=h.get("address", destination),
                     stars=float(stars) if stars else None,
                     price_per_night_usd=per_night,
                     total_price_usd=round(total_price, 2),
@@ -161,6 +176,7 @@ class HotelAgent(BaseAgent):
                 ))
             except Exception as e:
                 self.logger.warning(f"Skipping property: {e}")
+
         return options
 
     # ── Booking URL ──────────────────────────────────────────────────────

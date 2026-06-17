@@ -83,10 +83,10 @@ def _skyscanner_airport_search(city: str, key: str) -> Optional[str]:
     """Query the Skyscanner API airport search endpoint."""
     try:
         response = httpx.get(
-            "https://skyscanner50.p.rapidapi.com/api/v1/searchAirport",
+            "https://skyscanner-flights-travel-api.p.rapidapi.com/api/v1/searchAirport",
             headers={
                 "X-RapidAPI-Key":  key,
-                "X-RapidAPI-Host": "skyscanner50.p.rapidapi.com",
+                "X-RapidAPI-Host": "skyscanner-flights-travel-api.p.rapidapi.com",
             },
             params={"query": city},
             timeout=10,

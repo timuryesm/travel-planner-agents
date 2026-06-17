@@ -11,7 +11,7 @@ from src.config.settings import settings
 class FlightAgent(BaseAgent):
 
     name = "flights"
-    RAPIDAPI_HOST = "skyscanner50.p.rapidapi.com"
+    RAPIDAPI_HOST = "skyscanner-flights-travel-api.p.rapidapi.com"
 
     def run(self, plan: TravelPlan) -> TravelPlan:
         req = plan.request
