@@ -61,88 +61,69 @@ class AirbnbAgent(BaseAgent):
 
     def _search_airbnb(self, req, nights: int) -> list[HotelOption]:
         response = httpx.get(
-            f"https://{self.RAPIDAPI_HOST}/search",
+            f"https://{self.RAPIDAPI_HOST}/api/v1/searchPropertyByLocationV2",
             headers={
-                "X-RapidAPI-Key":  settings.RAPIDAPI_KEY,
-                "X-RapidAPI-Host": self.RAPIDAPI_HOST,
+                "x-rapidapi-key":  settings.RAPIDAPI_KEY,
+                "x-rapidapi-host": self.RAPIDAPI_HOST,
             },
             params={
-                "location":  req.destination,
-                "checkin":   req.departure_date.isoformat(),
-                "checkout":  req.return_date.isoformat(),
-                "adults":    req.travelers,
-                "children":  0,
-                "infants":   0,
-                "pets":      0,
-                "page":      1,
-                "currency":  "USD",
+                "location":     req.destination,
+                "totalRecords": 10,
+                "currency":     "USD",
+                "adults":       req.travelers,
+                "checkin":      req.departure_date.isoformat(),
+                "checkout":     req.return_date.isoformat(),
             },
             timeout=15,
         )
         response.raise_for_status()
         return self._parse_airbnb(
-            response.json(),
-            req.destination,
-            req.departure_date,
-            req.return_date,
-            req.travelers,
-            nights,
+            response.json(), req.destination,
+            req.departure_date, req.return_date,
+            req.travelers, nights,
         )
 
     def _parse_airbnb(
-        self,
-        raw: dict,
-        destination: str,
-        checkin: date,
-        checkout: date,
-        adults: int,
-        nights: int,
+        self, raw: dict,
+        destination: str, checkin: date, checkout: date,
+        adults: int, nights: int,
     ) -> list[HotelOption]:
-        """
-        Parse Airbnb API response. Handles two common response structures
-        from different Airbnb API versions on RapidAPI.
-        """
         options: list[HotelOption] = []
 
-        # Structure 1: {"results": [...]}
-        listings = raw.get("results", [])
+        self.logger.warning(f"Airbnb raw 'data' content: {raw.get('data')}")  # debug
 
-        # Structure 2: {"listings": [{"listing": {...}, "pricing_quote": {...}}]}
-        if not listings and "listings" in raw:
-            listings = raw["listings"]
+        listings = raw.get("data") or raw.get("results") or raw.get("list") or []
+        if isinstance(listings, dict):
+            listings = listings.get("list") or listings.get("results") or []
+
+        if not listings:
+            self.logger.warning(f"No Airbnb listings found. Raw response keys: {list(raw.keys())}")
+            return options
 
         for item in listings[:10]:
             try:
-                # Handle both flat and nested structures
-                listing = item.get("listing", item)
-                pricing = item.get("pricing_quote", {})
+                name        = item.get("name") or item.get("title", "Airbnb Listing")
+                listing_id  = str(item.get("id", ""))
+                rating      = item.get("rating") or item.get("avgRating")
+                room_type   = item.get("roomType") or item.get("type", "entire_home")
 
-                name      = listing.get("name", "Airbnb Listing")
-                room_type = listing.get("room_type_category") or \
-                            listing.get("type", "entire_home")
-                listing_id = str(listing.get("id", ""))
-                rating    = listing.get("avg_rating") or listing.get("rating")
-
-                # Price — check multiple locations
-                price_block = listing.get("price") or pricing
+                price_block = item.get("price", {})
                 total_price = (
                     price_block.get("total")
-                    or price_block.get("localized_total_price")
-                    or (price_block.get("rate", {}).get("amount", 0) * nights
-                        if isinstance(price_block.get("rate"), dict)
-                        else 0)
+                    or price_block.get("amount")
+                    or item.get("totalPrice")
+                    or 0
                 )
                 if not total_price:
                     continue
 
                 total_price = float(total_price)
-                per_night   = round(total_price / nights, 2)
-
-                # Convert room_type to readable label
-                label = self.ROOM_TYPES.get(
-                    room_type.lower().replace(" ", "_"),
-                    room_type.replace("_", " ").title()
+                per_night   = round(total_price / nights, 2) if nights > 0 else total_price
+                label       = self.ROOM_TYPES.get(
+                    str(room_type).lower().replace(" ", "_"),
+                    str(room_type).replace("_", " ").title(),
                 )
+                stars = round(float(rating), 1) if rating else None
 
                 booking_url = (
                     f"https://www.airbnb.com/rooms/{listing_id}"
@@ -151,18 +132,12 @@ class AirbnbAgent(BaseAgent):
                     self._build_search_url(destination, checkin, checkout, adults)
                 )
 
-                # Map star rating: Airbnb uses 5-star scale
-                stars = round(float(rating) / 1.0, 1) if rating else None
-
                 options.append(HotelOption(
-                    name=name,
-                    location=destination,
-                    stars=stars,
+                    name=name, location=destination, stars=stars,
                     price_per_night_usd=per_night,
                     total_price_usd=round(total_price, 2),
                     booking_url=booking_url,
-                    property_type=label,
-                    provider="airbnb",
+                    property_type=label, provider="airbnb",
                 ))
             except Exception as e:
                 self.logger.warning(f"Skipping listing: {e}")

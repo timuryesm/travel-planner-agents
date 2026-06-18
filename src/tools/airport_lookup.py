@@ -160,3 +160,39 @@ def city_to_skyscanner_code(city: str) -> str:
         return code
     # Single-airport cities: airport IATA works as city code too
     return IATA_FALLBACK.get(city.lower().strip(), city.upper()[:3])
+
+
+def lookup_skyscanner_ids(city: str, rapidapi_key: str) -> tuple[str, str]:
+    """
+    Resolve a city name to Skyscanner's internal (skyId, entityId) pair
+    via /flights/searchAirport. Prefers the CITY-level result.
+    """
+    response = httpx.get(
+        "https://skyscanner-flights-travel-api.p.rapidapi.com/flights/searchAirport",
+        headers={
+            "x-rapidapi-key":  rapidapi_key,
+            "x-rapidapi-host": "skyscanner-flights-travel-api.p.rapidapi.com",
+        },
+        params={"query": city, "market": "US", "locale": "en-US"},
+        timeout=10,
+    )
+    response.raise_for_status()
+    raw = response.json()
+
+    places = raw.get("places", [])
+    if not places:
+        logger.warning(f"Skyscanner searchAirport raw response for '{city}': {raw}")
+        raise ValueError(f"No Skyscanner airport results for '{city}'")
+
+    # Prefer the CITY-level entry over individual airports
+    city_match = next((p for p in places if p.get("placeType") == "CITY"), None)
+    chosen = city_match or places[0]
+
+    sky_id    = chosen.get("skyId")
+    entity_id = chosen.get("entityId")
+
+    if not sky_id or not entity_id:
+        raise ValueError(f"Could not parse skyId/entityId for '{city}'. Got: {chosen}")
+
+    logger.info(f"Skyscanner IDs for '{city}': skyId={sky_id}, entityId={entity_id}")
+    return str(sky_id), str(entity_id)

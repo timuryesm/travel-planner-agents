@@ -64,32 +64,29 @@ class HotelAgent(BaseAgent):
     # ── Booking.com API ──────────────────────────────────────────────────
 
     def _get_destination_id(self, city: str) -> str:
-        response = httpx.get(
-            f"https://{self.RAPIDAPI_HOST}/locations/auto-complete",
-            headers={
-                "X-RapidAPI-Key":  settings.RAPIDAPI_KEY,
-                "X-RapidAPI-Host": self.RAPIDAPI_HOST,
-            },
-            params={
-                "text":         city,
-                "languagecode": "en-us",
-            },
-            timeout=10,
-        )
-        response.raise_for_status()
-        results = response.json()
-        if not results:
-            raise ValueError(f"No Booking.com destination found for '{city}'")
+    response = httpx.get(
+        f"https://{self.RAPIDAPI_HOST}/locations/auto-complete",
+        headers={
+            "X-RapidAPI-Key":  settings.RAPIDAPI_KEY,
+            "X-RapidAPI-Host": self.RAPIDAPI_HOST,
+        },
+        params={"text": city, "languagecode": "en-us"},
+        timeout=10,
+    )
+    response.raise_for_status()
+    results = response.json()
 
-        # apidojo returns a flat list
-        for r in results:
-            if r.get("dest_type") == "city":
-                self.logger.info(
-                    f"Destination ID: {r['dest_id']} ({r.get('label', city)})"
-                )
-                return str(r["dest_id"])
+    self.logger.warning(f"Booking.com auto-complete raw response for '{city}': {results}")  # debug
 
-        return str(results[0]["dest_id"])
+    if not results:
+        raise ValueError(f"No Booking.com destination found for '{city}'")
+
+    for r in results:
+        if r.get("dest_type") == "city":
+            self.logger.info(f"Destination ID: {r['dest_id']} ({r.get('label', city)})")
+            return str(r["dest_id"])
+
+    return str(results[0]["dest_id"])
 
     def _search_hotels(
         self,
@@ -144,6 +141,9 @@ class HotelAgent(BaseAgent):
 
         # apidojo returns results under "result" key
         hotels = raw.get("result", [])
+
+        if not hotels:
+            self.logger.warning(f"Booking.com error response: {raw}")
 
         if hotels:
             self.logger.info(f"Sample hotel keys: {list(hotels[0].keys())}")
