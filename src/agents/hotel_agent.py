@@ -76,8 +76,6 @@ class HotelAgent(BaseAgent):
         response.raise_for_status()
         results = response.json()
 
-        self.logger.warning(f"Booking.com auto-complete raw response for '{city}': {results}")
-
         if not results:
             raise ValueError(f"No Booking.com destination found for '{city}'")
 
