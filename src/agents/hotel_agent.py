@@ -26,7 +26,7 @@ class HotelAgent(BaseAgent):
     def run(self, plan: TravelPlan) -> TravelPlan:
         req    = plan.request
         nights = (req.return_date - req.departure_date).days
-        acc    = req.accommodation_type   # "any", "hotel", "apartment", etc.
+        acc    = req.accommodation_type
 
         self.logger.info(
             f"{req.destination} · {nights} nights · "
@@ -55,38 +55,38 @@ class HotelAgent(BaseAgent):
                 req.return_date, nights, req.budget_usd, acc,
             )
 
-        existing           = plan.hotel_options or []
-        plan.hotel_options = existing + options
-        plan.selected_hotel = self._select_best(plan.hotel_options, req.budget_usd)
+        existing            = plan.hotel_options or []
+        plan.hotel_options   = existing + options
+        plan.selected_hotel  = self._select_best(plan.hotel_options, req.budget_usd)
         plan.mark_complete(self.name)
         return plan
 
     # ── Booking.com API ──────────────────────────────────────────────────
 
     def _get_destination_id(self, city: str) -> str:
-    response = httpx.get(
-        f"https://{self.RAPIDAPI_HOST}/locations/auto-complete",
-        headers={
-            "X-RapidAPI-Key":  settings.RAPIDAPI_KEY,
-            "X-RapidAPI-Host": self.RAPIDAPI_HOST,
-        },
-        params={"text": city, "languagecode": "en-us"},
-        timeout=10,
-    )
-    response.raise_for_status()
-    results = response.json()
+        response = httpx.get(
+            f"https://{self.RAPIDAPI_HOST}/locations/auto-complete",
+            headers={
+                "X-RapidAPI-Key":  settings.RAPIDAPI_KEY,
+                "X-RapidAPI-Host": self.RAPIDAPI_HOST,
+            },
+            params={"text": city, "languagecode": "en-us"},
+            timeout=10,
+        )
+        response.raise_for_status()
+        results = response.json()
 
-    self.logger.warning(f"Booking.com auto-complete raw response for '{city}': {results}")  # debug
+        self.logger.warning(f"Booking.com auto-complete raw response for '{city}': {results}")
 
-    if not results:
-        raise ValueError(f"No Booking.com destination found for '{city}'")
+        if not results:
+            raise ValueError(f"No Booking.com destination found for '{city}'")
 
-    for r in results:
-        if r.get("dest_type") == "city":
-            self.logger.info(f"Destination ID: {r['dest_id']} ({r.get('label', city)})")
-            return str(r["dest_id"])
+        for r in results:
+            if r.get("dest_type") == "city":
+                self.logger.info(f"Destination ID: {r['dest_id']} ({r.get('label', city)})")
+                return str(r["dest_id"])
 
-    return str(results[0]["dest_id"])
+        return str(results[0]["dest_id"])
 
     def _search_hotels(
         self,
@@ -99,15 +99,15 @@ class HotelAgent(BaseAgent):
         accommodation_type: str,
     ) -> list[HotelOption]:
         params: dict = {
-            "dest_id":       dest_id,
-            "dest_type":     "city",
-            "arrival_date":  checkin.isoformat(),
+            "dest_id":        dest_id,
+            "dest_type":      "city",
+            "arrival_date":   checkin.isoformat(),
             "departure_date": checkout.isoformat(),
-            "adults_number": adults,
-            "room_number":   1,
-            "units":         "metric",
-            "locale":        "en-gb",
-            "currency_code": "USD",
+            "adults_number":  adults,
+            "room_number":    1,
+            "units":          "metric",
+            "locale":         "en-gb",
+            "currency_code":  "USD",
         }
         if accommodation_type != "any" and accommodation_type in PROPERTY_TYPE_IDS:
             params["property_type_id"] = PROPERTY_TYPE_IDS[accommodation_type]
@@ -138,18 +138,10 @@ class HotelAgent(BaseAgent):
         accommodation_type: str,
     ) -> list[HotelOption]:
         options: list[HotelOption] = []
-
-        # apidojo returns results under "result" key
         hotels = raw.get("result", [])
 
         if not hotels:
             self.logger.warning(f"Booking.com error response: {raw}")
-
-        if hotels:
-            self.logger.info(f"Sample hotel keys: {list(hotels[0].keys())}")
-            self.logger.info(f"Sample price data: {hotels[0].get('min_total_price')} | {hotels[0].get('composite_price_breakdown', {})}")
-        else:
-            self.logger.info(f"Raw response keys: {list(raw.keys())}")
 
         for h in hotels[:10]:
             try:
@@ -199,14 +191,12 @@ class HotelAgent(BaseAgent):
             f"&no_rooms=1"
             f"&order=price"
         )
-        # Add property type filter to URL if specified
         if accommodation_type != "any" and accommodation_type in PROPERTY_TYPE_IDS:
             url += f"&nflt=property_type%3D{PROPERTY_TYPE_IDS[accommodation_type]}"
         return url
 
     # ── Mock data ────────────────────────────────────────────────────────
 
-    # Per-type mock templates
     MOCK_TEMPLATES: dict[str, list[dict]] = {
         "hotel": [
             {"label": "Budget Hotel",      "stars": 2.0, "mult": 0.40},
@@ -240,9 +230,9 @@ class HotelAgent(BaseAgent):
             {"label": "Luxury Resort",         "stars": 5.0, "mult": 3.50},
         ],
         "guesthouse": [
-            {"label": "Family Guesthouse",     "stars": None, "mult": 0.30},
-            {"label": "Traditional Guesthouse","stars": None, "mult": 0.40},
-            {"label": "Boutique Guesthouse",   "stars": 3.0,  "mult": 0.55},
+            {"label": "Family Guesthouse",      "stars": None, "mult": 0.30},
+            {"label": "Traditional Guesthouse", "stars": None, "mult": 0.40},
+            {"label": "Boutique Guesthouse",    "stars": 3.0,  "mult": 0.55},
         ],
     }
 
@@ -258,7 +248,6 @@ class HotelAgent(BaseAgent):
         base      = self._city_price_base(destination)
         districts = self._city_districts(destination)
 
-        # For "any", mix a selection of all types
         if accommodation_type == "any":
             templates = (
                 self.MOCK_TEMPLATES["hostel"][:1]
