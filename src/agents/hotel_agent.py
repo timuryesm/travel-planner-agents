@@ -127,21 +127,12 @@ class HotelAgent(BaseAgent):
             adults, nights, accommodation_type,
         )
 
-    def _parse_hotels(
-        self,
-        raw: dict,
-        destination: str,
-        checkin: date,
-        checkout: date,
-        adults: int,
-        nights: int,
-        accommodation_type: str,
-    ) -> list[HotelOption]:
+    def _parse_hotels(self, raw, destination, checkin, checkout, adults, nights, accommodation_type):
         options: list[HotelOption] = []
         hotels = raw.get("result", [])
 
         if not hotels:
-            self.logger.warning(f"Booking.com error response: {raw}")
+            raise ValueError(f"Booking.com returned no results: {raw.get('message', raw)}")
 
         for h in hotels[:10]:
             try:

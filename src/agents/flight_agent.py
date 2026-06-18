@@ -139,6 +139,12 @@ class FlightAgent(BaseAgent):
                 ))
             except Exception as e:
                 self.logger.warning(f"Skipping itinerary: {e}")
+        if not options:
+            raise ValueError(
+                f"Skyscanner returned no parseable itineraries "
+                f"(status={raw.get('status')}, total={raw.get('total')}). "
+                f"Likely async polling required."
+            )
         return options
 
     # ── Booking URL ──────────────────────────────────────────────────────

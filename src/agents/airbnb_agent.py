@@ -97,8 +97,7 @@ class AirbnbAgent(BaseAgent):
             listings = listings.get("list") or listings.get("results") or []
 
         if not listings:
-            self.logger.warning(f"No Airbnb listings found. Raw response keys: {list(raw.keys())}")
-            return options
+            raise ValueError(f"Airbnb returned no listings: {raw.get('message', 'empty')}")
 
         for item in listings[:10]:
             try:
