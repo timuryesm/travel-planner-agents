@@ -7,6 +7,8 @@ from src.agents.flight_agent import FlightAgent
 from src.state.travel_plan import TravelPlan, TravelRequest, FlightOption
 from src.agents.hotel_agent import HotelAgent
 from src.agents.airbnb_agent import AirbnbAgent
+from src.agents.activities_agent import ActivitiesAgent
+from src.agents.budget_agent import BudgetAgent
 
 def run_pipeline(request: TravelRequest) -> TravelPlan:
     plan = TravelPlan(request=request)
@@ -17,8 +19,8 @@ def run_pipeline(request: TravelRequest) -> TravelPlan:
     agent_registry = {
         "weather":    WeatherAgent(),
         "flights":    FlightAgent(),
-        "activities": None,   # Step 7
-        "budget":     None,   # Step 7
+        "activities": ActivitiesAgent(),
+        "budget":     BudgetAgent(),
     }
 
     print(f"\nExecution plan: {execution_plan.strategy_notes}\n")
@@ -92,6 +94,29 @@ def print_results(plan: TravelPlan) -> None:
             print(f"    {err}")
 
     print(f"\n✓ Completed agents: {', '.join(plan.completed_agents)}")
+
+    if plan.activities:
+        print(f"\n🎟  Activities ({len(plan.activities)}):")
+        for a in plan.activities:
+            cost = "Free" if a.estimated_cost_usd == 0 else f"${a.estimated_cost_usd:,.0f}"
+            print(f"    • {a.name}  [{a.category}]")
+            print(f"      {a.description}")
+            print(f"      {cost} · {a.duration_hours}h")
+
+    if plan.budget:
+        b = plan.budget
+        status = "✅ Within budget" if b.within_budget else "❌ Over budget"
+        print(f"\n💰  Budget breakdown:")
+        print(f"    Flights:        ${b.flights_usd:>10,.2f}")
+        print(f"    Accommodation:  ${b.hotel_usd:>10,.2f}")
+        print(f"    Activities:     ${b.activities_usd:>10,.2f}")
+        print(f"    Miscellaneous:  ${b.miscellaneous_usd:>10,.2f}")
+        print(f"    {'─' * 30}")
+        print(f"    TOTAL:          ${b.total_usd:>10,.2f}")
+        print(f"    Budget:         ${plan.request.budget_usd:>10,.2f}")
+        print(f"    {status}")
+        for note in b.notes:
+            print(f"    • {note}")
 
 
 def _print_flight(f: "FlightOption") -> None:
