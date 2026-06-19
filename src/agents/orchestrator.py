@@ -100,46 +100,130 @@ Produce the execution plan."""
             )
 
     def assemble_itinerary(self, plan: TravelPlan) -> str:
-        """Ask Claude to write the final itinerary from all agent results."""
+        """
+        Take the fully-populated TravelPlan and ask Claude to write
+        a polished, day-by-day markdown itinerary.
+        """
+        self.logger.info("Assembling final itinerary")
 
-        context = f"""You are writing a final travel itinerary based on research from specialist agents.
+        context = self._build_context(plan)
 
-Travel request:
-- From: {plan.request.origin} to {plan.request.destination}
-- Dates: {plan.request.departure_date} → {plan.request.return_date}
-- Travelers: {plan.request.travelers}
-- Budget: ${plan.request.budget_usd:,.0f} USD
+        system_prompt = """You are an expert travel planner writing a final itinerary document.
 
-Agent results:
-"""
-        if plan.selected_flight:
-            f = plan.selected_flight
-            context += f"\nFLIGHT: {f.airline}, departs {f.departure_time}, arrives {f.arrival_time}, ${f.price_usd:.0f}"
+You will receive structured research from specialist agents (flights, hotel,
+weather, activities, budget). Write a warm, well-organized, day-by-day travel
+itinerary in markdown.
 
-        if plan.selected_hotel:
-            h = plan.selected_hotel
-            context += f"\nHOTEL: {h.name} ({h.stars}★), ${h.price_per_night_usd:.0f}/night, total ${h.total_price_usd:.0f}"
+Structure your response as:
+1. A short, friendly intro paragraph (2-3 sentences) about the trip
+2. A "Getting There" section with the flight details
+3. A "Where You'll Stay" section with the accommodation
+4. A "Day-by-Day Plan" section — distribute the activities sensibly across the
+   available days, accounting for the weather each day. Put outdoor activities
+   on better-weather days. Don't overload any single day (2-3 activities max).
+5. A "Budget Summary" section with the cost breakdown as a markdown table
+6. A "Packing Tips" section from the weather data
 
-        if plan.activities:
-            context += f"\nACTIVITIES:\n"
-            for a in plan.activities:
-                context += f"  - {a.name}: {a.description} (${a.estimated_cost_usd:.0f}, {a.duration_hours}h)\n"
+Be specific and practical. Reference actual prices, times, and forecasts from
+the data. Write in a friendly second-person voice ("you'll arrive...").
+Do not invent details that aren't in the data."""
 
-        if plan.weather:
-            context += f"\nWEATHER: {plan.weather.forecast_by_day}"
-            context += f"\nPACKING TIPS: {', '.join(plan.weather.packing_tips)}"
-
-        if plan.budget:
-            b = plan.budget
-            context += f"\nBUDGET: Flights ${b.flights_usd:.0f} + Hotel ${b.hotel_usd:.0f} + Activities ${b.activities_usd:.0f} = Total ${b.total_usd:.0f}"
-            context += f"\nWithin budget: {'Yes' if b.within_budget else 'No'}"
-
-        context += "\n\nWrite a friendly, day-by-day markdown itinerary with a budget summary table at the end."
-
-        response = self.client.messages.create(
+        client = self.client
+        response = client.messages.create(
             model=self.MODEL,
-            max_tokens=2048,
-            messages=[{"role": "user", "content": context}]
+            max_tokens=4096,
+            system=system_prompt,
+            messages=[{"role": "user", "content": context}],
         )
 
-        return response.content[0].text
+        itinerary = response.content[0].text
+        plan.itinerary_markdown = itinerary
+        self.logger.info(f"Itinerary assembled ({len(itinerary)} chars)")
+        return itinerary
+
+
+    def _build_context(self, plan: TravelPlan) -> str:
+        """Format all agent results into a single text block for Claude."""
+        req = plan.request
+        nights = (req.return_date - req.departure_date).days
+
+        lines = [
+            f"TRIP REQUEST",
+            f"From: {req.origin} to {req.destination}",
+            f"Dates: {req.departure_date} to {req.return_date} ({nights} nights)",
+            f"Travelers: {req.travelers}",
+            f"Budget: ${req.budget_usd:,.0f} USD",
+            f"Interests: {', '.join(req.interests) if req.interests else 'general'}",
+            "",
+        ]
+
+        # ── Flight ───────────────────────────────────────────────────────
+        if plan.selected_flight:
+            f = plan.selected_flight
+            lines.append("FLIGHT (selected best option):")
+            lines.append(f"  Trip type: {f.trip_type}")
+            for i, leg in enumerate(f.legs, 1):
+                lines.append(
+                    f"  Leg {i}: {leg.airline}, {leg.origin} → {leg.destination}, "
+                    f"departs {leg.departure_time}, arrives {leg.arrival_time}, "
+                    f"{leg.duration_hours}h"
+                )
+            lines.append(f"  Total price: ${f.price_usd:,.2f}")
+            if f.booking_url:
+                lines.append(f"  Booking link: {f.booking_url}")
+            lines.append("")
+
+        # ── Hotel ────────────────────────────────────────────────────────
+        if plan.selected_hotel:
+            h = plan.selected_hotel
+            lines.append("ACCOMMODATION (selected best option):")
+            lines.append(f"  {h.name} ({h.property_type}, via {h.provider})")
+            lines.append(f"  Location: {h.location}")
+            if h.stars:
+                lines.append(f"  Rating: {h.stars} stars")
+            lines.append(
+                f"  ${h.price_per_night_usd:,.2f}/night, "
+                f"total ${h.total_price_usd:,.2f} for {nights} nights"
+            )
+            if h.booking_url:
+                lines.append(f"  Booking link: {h.booking_url}")
+            lines.append("")
+
+        # ── Weather ──────────────────────────────────────────────────────
+        if plan.weather:
+            lines.append("WEATHER FORECAST (by day):")
+            for day, forecast in plan.weather.forecast_by_day.items():
+                lines.append(f"  {day}: {forecast}")
+            lines.append("  Packing tips: " + "; ".join(plan.weather.packing_tips))
+            lines.append("")
+
+        # ── Activities ───────────────────────────────────────────────────
+        if plan.activities:
+            lines.append(f"AVAILABLE ACTIVITIES ({len(plan.activities)} options):")
+            for a in plan.activities:
+                cost = "Free" if a.estimated_cost_usd == 0 else f"${a.estimated_cost_usd:,.0f}"
+                lines.append(
+                    f"  - {a.name} [{a.category}]: {a.description} "
+                    f"({cost}, {a.duration_hours}h)"
+                )
+            lines.append("")
+
+        # ── Budget ───────────────────────────────────────────────────────
+        if plan.budget:
+            b = plan.budget
+            lines.append("BUDGET BREAKDOWN:")
+            lines.append(f"  Flights: ${b.flights_usd:,.2f}")
+            lines.append(f"  Accommodation: ${b.hotel_usd:,.2f}")
+            lines.append(f"  Activities: ${b.activities_usd:,.2f}")
+            lines.append(f"  Miscellaneous: ${b.miscellaneous_usd:,.2f}")
+            lines.append(f"  TOTAL: ${b.total_usd:,.2f} (budget ${req.budget_usd:,.0f})")
+            lines.append(f"  Within budget: {'Yes' if b.within_budget else 'No'}")
+            lines.append("")
+
+        lines.append(
+            "Now write the complete day-by-day itinerary following the structure "
+            "in your instructions. Distribute activities across the "
+            f"{nights} days, matching outdoor activities to good-weather days."
+        )
+
+        return "\n".join(lines)

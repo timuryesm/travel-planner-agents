@@ -43,6 +43,13 @@ def run_pipeline(request: TravelRequest) -> TravelPlan:
         else:
             print(f"  ⏭  {task.agent} agent not implemented yet — skipping")
 
+    # After all agents have run, assemble the final itinerary
+    if plan.is_ready_for_output():
+        plan.itinerary_markdown = orchestrator.assemble_itinerary(plan)
+    else:
+        missing = {"weather", "flights", "hotels", "activities", "budget"} - set(plan.completed_agents)
+        print(f"\n⚠️  Skipping itinerary assembly — missing agents: {', '.join(missing)}")
+
     return plan
 
 
@@ -117,6 +124,24 @@ def print_results(plan: TravelPlan) -> None:
         print(f"    {status}")
         for note in b.notes:
             print(f"    • {note}")
+
+    # Final assembled itinerary
+    if plan.itinerary_markdown:
+        print("\n" + "=" * 60)
+        print("YOUR ITINERARY")
+        print("=" * 60 + "\n")
+        print(plan.itinerary_markdown)
+
+        # Save to a markdown file
+        from pathlib import Path
+        output_dir = Path("output")
+        output_dir.mkdir(exist_ok=True)
+        filename = output_dir / (
+            f"itinerary_{plan.request.destination.lower().replace(' ', '_')}_"
+            f"{plan.request.departure_date}.md"
+        )
+        filename.write_text(plan.itinerary_markdown, encoding="utf-8")
+        print(f"\n💾 Saved to {filename}")
 
 
 def _print_flight(f: "FlightOption") -> None:
