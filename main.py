@@ -180,8 +180,8 @@ def main():
     request = TravelRequest(
         destination="Tokyo",
         origin="Toronto",
-        departure_date=date(2026, 8, 1),
-        return_date=date(2026, 8, 10),
+        departure_date=date(2026, 7, 28),
+        return_date=date(2026, 8, 4),
         budget_usd=4000.0,
         travelers=1,
         interests=["food", "temples", "hiking"],

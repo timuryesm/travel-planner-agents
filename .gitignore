@@ -222,3 +222,5 @@ __marimo__/
 __pycache__/
 *.pyc
 .DS_Storeoutput/
+output/
+skyscanner_raw_dump.json

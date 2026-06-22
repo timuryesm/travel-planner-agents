@@ -1,6 +1,7 @@
 from __future__ import annotations
 import httpx
 import random
+import time
 from datetime import date, datetime, timedelta
 from src.agents.base_agent import BaseAgent
 from src.state.travel_plan import TravelPlan, FlightOption, FlightLeg
@@ -70,35 +71,83 @@ class FlightAgent(BaseAgent):
         depart_date: date, return_date: date,
         adults: int, trip_type: str,
     ) -> list[FlightOption]:
+        headers = {
+            "x-rapidapi-key":  settings.RAPIDAPI_KEY,
+            "x-rapidapi-host": self.RAPIDAPI_HOST,
+        }
+
+        # ── Phase 1: start the search ────────────────────────────────────
         params = {
-            "originSkyId":          origin_sky,
-            "originEntityId":       origin_entity,
-            "destinationSkyId":     dest_sky,
-            "destinationEntityId":  dest_entity,
-            "date":                 depart_date.isoformat(),
-            "adults":               adults,
-            "childrens":            0,
-            "infants":              0,
-            "cabinClass":           "economy",
-            "currency":             "USD",
-            "countryCode":          "US",
-            "market":               "US",
+            "originSkyId":         origin_sky,
+            "originEntityId":      origin_entity,
+            "destinationSkyId":    dest_sky,
+            "destinationEntityId": dest_entity,
+            "date":                depart_date.isoformat(),
+            "adults":              adults,
+            "childrens":           0,
+            "infants":             0,
+            "cabinClass":          "economy",
+            "currency":            "USD",
+            "countryCode":         "US",
+            "market":              "US",
         }
         if trip_type == "roundtrip":
             params["returnDate"] = return_date.isoformat()
 
         response = httpx.get(
             f"https://{self.RAPIDAPI_HOST}/flights/searchFlights",
-            headers={
-                "x-rapidapi-key":  settings.RAPIDAPI_KEY,
-                "x-rapidapi-host": self.RAPIDAPI_HOST,
-            },
-            params=params,
-            timeout=15,
+            headers=headers, params=params, timeout=30,
         )
         response.raise_for_status()
+        raw = response.json()
+
+        session_token = raw.get("sessionToken")
+        itineraries   = raw.get("itineraries", [])
+        status        = raw.get("status", "")
+
+        self.logger.info(
+            f"Initial search: status={status}, "
+            f"itineraries={len(itineraries)}, token={'yes' if session_token else 'no'}"
+        )
+
+        # ── Phase 2: poll until results populate ─────────────────────────
+        MAX_POLLS   = 6
+        POLL_WAIT_S = 2.0
+
+        poll = 0
+        while not itineraries and session_token and poll < MAX_POLLS:
+            poll += 1
+            time.sleep(POLL_WAIT_S)
+            self.logger.info(f"Polling for results (attempt {poll}/{MAX_POLLS})")
+
+            poll_response = httpx.get(
+                f"https://{self.RAPIDAPI_HOST}/flights/searchIncomplete",
+                headers=headers,
+                params={
+                    "sessionId":   session_token,
+                    "countryCode": "US",
+                    "currency":    "USD",
+                },
+                timeout=15,
+            )
+            poll_response.raise_for_status()
+            poll_raw = poll_response.json()
+
+            itineraries   = poll_raw.get("itineraries", [])
+            status        = poll_raw.get("status", "")
+            # token may refresh between polls
+            session_token = poll_raw.get("sessionToken", session_token)
+
+            self.logger.info(
+                f"Poll {poll}: status={status}, itineraries={len(itineraries)}"
+            )
+
+            if itineraries:
+                raw = poll_raw  # use the populated response for parsing
+                break
+
         return self._parse_skyscanner(
-            response.json(), origin_city, dest_city,
+            raw, origin_city, dest_city,
             depart_date, return_date, adults, trip_type,
         )
 
@@ -109,33 +158,31 @@ class FlightAgent(BaseAgent):
         adults: int, trip_type: str,
     ) -> list[FlightOption]:
         options: list[FlightOption] = []
-        itineraries = raw.get("data", {}).get("itineraries", [])
+        itineraries = raw.get("itineraries", [])
 
         if not itineraries:
-            self.logger.warning(f"No itineraries found. Raw response keys: {list(raw.keys())}")
-            if "data" in raw:
-                self.logger.warning(f"Raw 'data' keys: {list(raw['data'].keys())}")
+            raise ValueError(
+                f"Skyscanner returned no parseable itineraries "
+                f"(status={raw.get('status')}, total={raw.get('total')})."
+            )
 
         for it in itineraries[:10]:
             try:
-                price = float(it.get("price", {}).get("raw", 0))
-                legs: list[FlightLeg] = []
-                for leg in it.get("legs", []):
-                    airline = (leg.get("carriers", {})
-                                  .get("marketing", [{}])[0]
-                                  .get("name", "Unknown"))
-                    legs.append(FlightLeg(
-                        airline=airline,
-                        origin=origin_city, destination=dest_city,
-                        departure_time=leg.get("departure", "")[:16],
-                        arrival_time=leg.get("arrival", "")[:16],
-                        duration_hours=round(leg.get("durationInMinutes", 0) / 60, 1),
-                    ))
+                price = float(it.get("price", {}).get("amount", 0))
+                legs  = it.get("legs", [])
+                if not legs:
+                    continue
+                outbound = legs[0]
+                airline = (outbound.get("carriers", [{}])[0].get("name", "Unknown"))
+                
                 options.append(FlightOption(
-                    trip_type=trip_type, legs=legs, price_usd=price,
-                    booking_url=self._build_booking_url(
-                        origin_city, dest_city, depart_date, return_date, trip_type, adults,
-                    ),
+                    airline=airline,
+                    price_usd=price,
+                    departure_time=outbound.get("departure", "")[:16],
+                    arrival_time=outbound.get("arrival", "")[:16],
+                    duration_hours=round(outbound.get("durationMinutes", 0) / 60, 1),
+                    stops=outbound.get("stopCount", 0),
+                    booking_url=it.get("bookingUrl", ""),
                 ))
             except Exception as e:
                 self.logger.warning(f"Skipping itinerary: {e}")
