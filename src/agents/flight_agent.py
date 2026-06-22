@@ -169,20 +169,26 @@ class FlightAgent(BaseAgent):
         for it in itineraries[:10]:
             try:
                 price = float(it.get("price", {}).get("amount", 0))
-                legs  = it.get("legs", [])
-                if not legs:
+                raw_legs = it.get("legs", [])
+                if not raw_legs:
                     continue
-                outbound = legs[0]
-                airline = (outbound.get("carriers", [{}])[0].get("name", "Unknown"))
+
+                flight_legs = []
+                for leg in raw_legs:
+                    flight_legs.append(FlightLeg(
+                        airline        = leg.get("carriers", [{}])[0].get("name", "Unknown"),
+                        origin         = leg.get("origin", ""),
+                        destination    = leg.get("destination", ""),
+                        departure_time = leg.get("departure", "")[:16],
+                        arrival_time   = leg.get("arrival", "")[:16],
+                        duration_hours = round(leg.get("durationMinutes", 0) / 60, 1),
+                    ))
                 
                 options.append(FlightOption(
-                    airline=airline,
-                    price_usd=price,
-                    departure_time=outbound.get("departure", "")[:16],
-                    arrival_time=outbound.get("arrival", "")[:16],
-                    duration_hours=round(outbound.get("durationMinutes", 0) / 60, 1),
-                    stops=outbound.get("stopCount", 0),
-                    booking_url=it.get("bookingUrl", ""),
+                    trip_type   = trip_type,
+                    legs        = flight_legs,
+                    price_usd   = price,
+                    booking_url = it.get("bookingUrl", ""),
                 ))
             except Exception as e:
                 self.logger.warning(f"Skipping itinerary: {e}")
