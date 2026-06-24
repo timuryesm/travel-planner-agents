@@ -30,7 +30,7 @@ class FlightAgent(BaseAgent):
             f"[{req.trip_type}]"
         )
 
-        if settings.RAPIDAPI_KEY:
+        if settings.RAPIDAPI_KEY and settings.SKYSCANNER_ENABLED:
             try:
                 origin_sky, origin_entity = lookup_skyscanner_ids(req.origin, settings.RAPIDAPI_KEY)
                 dest_sky, dest_entity     = lookup_skyscanner_ids(req.destination, settings.RAPIDAPI_KEY)

@@ -97,15 +97,18 @@ class HotelAgent(BaseAgent):
         accommodation_type: str,
     ) -> list[HotelOption]:
         params: dict = {
-            "dest_id":        dest_id,
-            "dest_type":      "city",
-            "arrival_date":   checkin.isoformat(),
-            "departure_date": checkout.isoformat(),
-            "adults_number":  adults,
-            "room_number":    1,
-            "units":          "metric",
-            "locale":         "en-gb",
-            "currency_code":  "USD",
+            "dest_ids":                  dest_id,
+            "search_type":               "city",
+            "arrival_date":              checkin.isoformat(),
+            "departure_date":            checkout.isoformat(),
+            "guest_qty":                 adults,
+            "room_qty":                  1,
+            "price_filter_currencycode": "USD",
+            "languagecode":              "en-gb",
+            "travel_purpose":            "leisure",
+            "search_id":                 "none",
+            "order_by":                  "popularity",
+            "offset":                    "0",
         }
         if accommodation_type != "any" and accommodation_type in PROPERTY_TYPE_IDS:
             params["property_type_id"] = PROPERTY_TYPE_IDS[accommodation_type]

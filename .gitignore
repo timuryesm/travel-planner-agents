@@ -224,3 +224,4 @@ __pycache__/
 .DS_Storeoutput/
 output/
 skyscanner_raw_dump.json
+booking_raw_dump.json

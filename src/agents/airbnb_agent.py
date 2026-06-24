@@ -29,7 +29,7 @@ class AirbnbAgent(BaseAgent):
             f"{req.travelers} guest(s) · type: {req.accommodation_type}"
         )
 
-        if settings.RAPIDAPI_KEY:
+        if settings.RAPIDAPI_KEY and settings.AIRBNB_ENABLED:
             try:
                 options = self._search_airbnb(req, nights)
                 self.logger.info(f"Airbnb returned {len(options)} listings")

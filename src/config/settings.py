@@ -8,6 +8,9 @@ class Settings:
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
     RAPIDAPI_KEY: str = os.getenv("RAPIDAPI_KEY", "")
 
+    SKYSCANNER_ENABLED: bool = False   # TEMP: monthly quota reached
+    AIRBNB_ENABLED: bool = False       # TEMP: monthly quota reached    
+
     @classmethod
     def validate(cls) -> None:
         """Call this at startup to catch missing keys early."""
