@@ -27,6 +27,7 @@ from typing import Any, Optional
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
+    DateTime,
     ForeignKey,
     Integer,
     String,
@@ -59,8 +60,12 @@ class User(Base):
         String(320), nullable=False, unique=True, index=True
     )
     hashed_password: Mapped[str] = mapped_column(String(128), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(default=_utcnow)
-    updated_at: Mapped[datetime] = mapped_column(default=_utcnow, onupdate=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
 
     trips: Mapped[list[Trip]] = relationship(
         "Trip", back_populates="user", cascade="all, delete-orphan"
@@ -114,8 +119,12 @@ class Trip(Base):
         Boolean, nullable=False, default=False
     )
 
-    created_at: Mapped[datetime] = mapped_column(default=_utcnow)
-    updated_at: Mapped[datetime] = mapped_column(default=_utcnow, onupdate=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
 
     # ── Relationships ─────────────────────────────────────────────────────────
     user: Mapped[User] = relationship("User", back_populates="trips")
@@ -171,8 +180,12 @@ class Stop(Base):
     stop_index: Mapped[int] = mapped_column(Integer, nullable=False)
     city: Mapped[str] = mapped_column(String(200), nullable=False)
     country: Mapped[str] = mapped_column(String(100), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(default=_utcnow)
-    updated_at: Mapped[datetime] = mapped_column(default=_utcnow, onupdate=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
 
     trip: Mapped[Trip] = relationship("Trip", back_populates="stops")
     stop_stage_commits: Mapped[list[StopStageCommit]] = relationship(
@@ -235,8 +248,12 @@ class TripStageCommit(Base):
     # Stored explicitly (not derived) so reconciliation can scan with
     # a simple WHERE completed = FALSE rather than decoding commit_type.
     completed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    created_at: Mapped[datetime] = mapped_column(default=_utcnow)
-    updated_at: Mapped[datetime] = mapped_column(default=_utcnow, onupdate=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
 
     trip: Mapped[Trip] = relationship("Trip", back_populates="trip_stage_commits")
 
@@ -300,8 +317,12 @@ class StopStageCommit(Base):
     )
     self_provided_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     completed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    created_at: Mapped[datetime] = mapped_column(default=_utcnow)
-    updated_at: Mapped[datetime] = mapped_column(default=_utcnow, onupdate=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
 
     stop: Mapped[Stop] = relationship("Stop", back_populates="stop_stage_commits")
 
