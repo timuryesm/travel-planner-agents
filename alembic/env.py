@@ -27,7 +27,16 @@ import src.db.models  # noqa: F401
 config = context.config
 
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # disable_existing_loggers=False is required because command.upgrade()
+    # is called in-process from src/main.py's FastAPI lifespan on every
+    # startup. fileConfig()'s default (disable_existing_loggers=True)
+    # silently disables every other logger already registered in the
+    # process — including uvicorn's — which causes uvicorn's access log,
+    # the "Application startup complete" line, and all subsequent
+    # exception tracebacks to vanish with no error of their own.
+    # When Alembic is run standalone via the `alembic` CLI (not via the
+    # app lifespan), this flag has no observable effect.
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # Strip asyncpg driver for the sync migration connection.
 # postgresql+asyncpg://...  →  postgresql://...  (uses psycopg2 by default)
