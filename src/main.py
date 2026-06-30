@@ -17,6 +17,14 @@ Phase C note:
 """
 from __future__ import annotations
 
+# Must run before any project import — src/auth/jwt.py and src/db/base.py
+# both read required env vars (SECRET_KEY, DATABASE_URL) at module import
+# time, not inside a function. If load_dotenv() runs after those imports,
+# .env values won't be in os.environ yet and the KeyError below will fire
+# even with a correctly filled-in .env file.
+from dotenv import load_dotenv
+load_dotenv()
+
 import os
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
