@@ -36,8 +36,20 @@ async def create_trip(user_id: uuid.UUID, db: AsyncSession) -> Trip:
     Trip PKs are generated Python-side (uuid.uuid4), so trip.id is
     available immediately — no flush needed before creating the commits.
 
-    The four commit rows are appended to trip.trip_stage_commits so the
-    returned object is fully usable without a reload.
+    The four commit rows are appended to trip.trip_stage_commits before
+    flush, so that relationship is already loaded on the returned object.
+
+    trip.stops is never touched here (a new trip has none yet), so it is
+    reloaded via load_trip() after flush rather than left unloaded. This
+    matters specifically in async SQLAlchemy: while trip is transient
+    (pre-INSERT), a first touch of an unset relationship auto-initialises
+    to an empty list with no DB query. But after flush() the object is
+    persistent, and a first touch at that point instead triggers a real
+    lazy-load SELECT — which crashes with MissingGreenlet if it happens
+    outside an awaited call (e.g. from a plain sync serialiser function
+    like _trip_detail()). Returning a load_trip()-loaded object sidesteps
+    that footgun entirely by ensuring every relationship is already
+    populated before the caller ever touches it.
     """
     trip = Trip(user_id=user_id)
     db.add(trip)
@@ -52,7 +64,10 @@ async def create_trip(user_id: uuid.UUID, db: AsyncSession) -> Trip:
         trip.trip_stage_commits.append(commit)
 
     await db.flush()
-    return trip
+
+    loaded = await load_trip(trip.id, db)
+    assert loaded is not None  # just created — load_trip cannot return None here
+    return loaded
 
 
 # ── load_trip ─────────────────────────────────────────────────────────────────
