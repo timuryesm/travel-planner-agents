@@ -1,0 +1,209 @@
+{
+    "app": {
+      "name": "Travel Planner",
+      "tagline": "Спланируйте идеальное путешествие, шаг за шагом"
+    },
+    "common": {
+      "next": "Далее",
+      "back": "Назад",
+      "skip": "Пропустить",
+      "continue": "Продолжить",
+      "confirm": "Подтвердить",
+      "cancel": "Отмена",
+      "save": "Сохранить",
+      "edit": "Изменить",
+      "delete": "Удалить",
+      "loading": "Загрузка…",
+      "retry": "Повторить",
+      "close": "Закрыть",
+      "optional": "необязательно",
+      "required": "обязательно",
+      "yes": "Да",
+      "no": "Нет"
+    },
+    "theme": {
+      "day": "День",
+      "night": "Ночь",
+      "auto": "авто",
+      "switchToDay": "Переключить на день",
+      "switchToNight": "Переключить на ночь"
+    },
+    "language": {
+      "label": "Язык",
+      "select": "Выбрать язык"
+    },
+    "auth": {
+      "loginTitle": "С возвращением",
+      "loginSubtitle": "Войдите, чтобы продолжить планирование",
+      "registerTitle": "Создайте аккаунт",
+      "registerSubtitle": "Начните планировать следующее приключение",
+      "email": "Эл. почта",
+      "emailPlaceholder": "you@example.com",
+      "password": "Пароль",
+      "passwordPlaceholder": "Введите пароль",
+      "loginButton": "Войти",
+      "registerButton": "Создать аккаунт",
+      "noAccount": "Нет аккаунта?",
+      "haveAccount": "Уже есть аккаунт?",
+      "signUpLink": "Зарегистрироваться",
+      "signInLink": "Войти",
+      "logout": "Выйти",
+      "errors": {
+        "invalidCredentials": "Неверная эл. почта или пароль.",
+        "emailTaken": "Аккаунт с такой эл. почтой уже существует.",
+        "emailInvalid": "Введите корректный адрес эл. почты.",
+        "passwordTooShort": "Пароль должен содержать не менее 8 символов.",
+        "networkError": "Не удалось связаться с сервером. Попробуйте ещё раз.",
+        "unknown": "Что-то пошло не так. Попробуйте ещё раз."
+      }
+    },
+    "sidebar": {
+      "tripSetup": "Настройка поездки",
+      "finishingUp": "Завершение",
+      "yourTrips": "Ваши поездки",
+      "newTrip": "Новая поездка",
+      "stop": "Остановка"
+    },
+    "stages": {
+      "setup": "Основное",
+      "destination": "Направление",
+      "flights": "Рейсы",
+      "accommodation": "Жильё",
+      "activities": "Развлечения",
+      "daily_plan": "План по дням",
+      "reconciliation": "Проверка",
+      "final": "Ваш план"
+    },
+    "stageStatus": {
+      "unvisited": "Не начато",
+      "current": "В процессе",
+      "completed": "Готово",
+      "skipped": "Пропущено",
+      "selfProvided": "Своё"
+    },
+    "setup": {
+      "title": "Начнём с основного",
+      "subtitle": "Расскажите о своей поездке",
+      "origin": "Вылет из",
+      "originPlaceholder": "напр. Торонто",
+      "departureDate": "Дата вылета",
+      "returnDate": "Дата возвращения",
+      "travelers": "Путешественники",
+      "travelType": "Стиль поездки",
+      "travelTypeRelax": "Спокойный",
+      "travelTypeActive": "Активный",
+      "travelTypeHybrid": "Понемногу и то, и другое",
+      "budget": "Бюджет",
+      "budgetPlaceholder": "напр. 3000",
+      "currency": "Валюта",
+      "withKids": "Путешествие с детьми",
+      "multiCity": "Посетить несколько городов",
+      "preferences": "Что-нибудь ещё?",
+      "preferencesPlaceholder": "Интересы, обязательные места, питание…"
+    },
+    "destination": {
+      "title": "Куда отправимся?",
+      "subtitle": "Вот несколько направлений, которые вам понравятся",
+      "whyChosen": "Почему мы выбрали это",
+      "seasonNote": "Лучшее время для поездки",
+      "safetyNote": "Полезно знать",
+      "selectThis": "Выбрать",
+      "selected": "Выбрано",
+      "addCity": "Добавить город",
+      "moreOptions": "Показать больше вариантов"
+    },
+    "flights": {
+      "title": "Выберите рейс",
+      "subtitle": "Варианты для {{city}}",
+      "cheapest": "Самый дешёвый",
+      "fastest": "Самый быстрый",
+      "comfortable": "Самый удобный",
+      "outbound": "Туда",
+      "return": "Обратно",
+      "duration": "{{hours}} ч",
+      "stops_one": "{{count}} пересадка",
+      "stops_few": "{{count}} пересадки",
+      "stops_many": "{{count}} пересадок",
+      "nonstop": "Без пересадок",
+      "selectFlight": "Выбрать этот рейс",
+      "provideOwn": "Я забронировал сам",
+      "provideOwnPlaceholder": "напр. Air Canada AC061, $1180"
+    },
+    "accommodation": {
+      "title": "Где остановитесь?",
+      "subtitle": "Жильё в {{city}}",
+      "perNight": "/ ночь",
+      "total": "Итого",
+      "nights_one": "{{count}} ночь",
+      "nights_few": "{{count}} ночи",
+      "nights_many": "{{count}} ночей",
+      "rating": "Рейтинг",
+      "selectStay": "Выбрать это жильё",
+      "provideOwn": "Я забронировал сам",
+      "provideOwnPlaceholder": "напр. Marriott в центре, $180/ночь"
+    },
+    "activities": {
+      "title": "Чем хотите заняться?",
+      "subtitle": "Развлечения в {{city}}",
+      "estimatedCost": "Примерная стоимость",
+      "duration": "{{hours}} ч",
+      "addActivity": "Добавить",
+      "removeActivity": "Убрать",
+      "selected_one": "Выбрано {{count}} занятие",
+      "selected_few": "Выбрано {{count}} занятия",
+      "selected_many": "Выбрано {{count}} занятий",
+      "confirmSelection": "Подтвердить выбор",
+      "moreOptions": "Показать ещё"
+    },
+    "dailyPlan": {
+      "title": "Ваш план по дням",
+      "subtitle": "День за днём в {{city}}",
+      "day": "День {{number}}",
+      "editPlan": "Изменить план",
+      "editPlaceholder": "Попросите изменить, напр. «перенести музей на вторую половину дня»",
+      "applyChanges": "Применить изменения",
+      "weatherLabel": "Погода"
+    },
+    "reconciliation": {
+      "title": "Почти готово",
+      "subtitle": "Несколько этапов требуют вашего внимания перед завершением",
+      "stageNeedsAttention": "Этот этап не завершён",
+      "addNow": "Добавить сейчас",
+      "writeOwn": "Указать своё",
+      "skipForGood": "Не включать",
+      "writeOwnPlaceholder": "Опишите, что вы хотите здесь…",
+      "allComplete": "Всё в порядке!",
+      "assemblePlan": "Создать план"
+    },
+    "final": {
+      "title": "Ваша поездка готова",
+      "subtitle": "Вот ваш полный план",
+      "downloadPlan": "Скачать план",
+      "exportCalendar": "Добавить в Google Календарь",
+      "shareEmail": "Поделиться по эл. почте",
+      "totalBudget": "Общий бюджет",
+      "withinBudget": "В рамках бюджета",
+      "overBudget": "Превышение на {{amount}}",
+      "startNewTrip": "Спланировать другую поездку"
+    },
+    "blastRadius": {
+      "title": "Возврат назад сбросит последующие этапы",
+      "description": "Изменение этого этапа удалит всё, что после него. Придётся заново пройти:",
+      "affectedStages": "Этапы, которые будут сброшены",
+      "confirmBack": "Да, вернуться",
+      "keepEditing": "Отмена"
+    },
+    "budget": {
+      "flights": "Рейсы",
+      "accommodation": "Жильё",
+      "activities": "Развлечения",
+      "miscellaneous": "Прочее",
+      "total": "Итого"
+    },
+    "errors": {
+      "loadTripFailed": "Не удалось загрузить поездку. Попробуйте ещё раз.",
+      "transitionFailed": "Не удалось сохранить изменение. Попробуйте ещё раз.",
+      "sessionExpired": "Ваша сессия истекла. Войдите снова.",
+      "generic": "Что-то пошло не так. Попробуйте ещё раз."
+    }
+  }
