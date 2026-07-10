@@ -2,32 +2,35 @@ import React from 'react'
 import { useTranslation } from 'react-i18next'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Stage components — PLACEHOLDERS
+// Stage components — barrel file
 // ─────────────────────────────────────────────────────────────────────────────
-// Step 12 replaces each of these with a real implementation. For now they all
-// share one generic component so the store, the renderer, and the transition
-// wiring can be tested end-to-end against the live backend before any
-// stage-specific UI exists.
+// Real implementations are imported and re-exported here. Stages not yet built
+// fall back to PlaceholderStage, so the wizard stays walkable end-to-end while
+// Step 12 lands in sub-steps.
 //
-// Every stage receives the same prop contract (see WizardRenderer):
-//   commit(data, selfProvidedText?) · skip() · forward()
-//   commitData · stop · setupData · transitioning
+//   12a  SetupStage, DestinationStage                          ← done
+//   12b  FlightsStage, AccommodationStage, ActivitiesStage      ← next
+//   12c  DailyPlanStage, ReconciliationStage, FinalStage
+
+import SetupStageImpl from './SetupStage'
+import DestinationStageImpl from './DestinationStage'
+
+// ── Placeholder for stages not yet implemented ────────────────────────────────
 
 function PlaceholderStage({ stageKey, commit, skip, forward, commitData, stop, transitioning }) {
   const { t } = useTranslation()
 
   return (
-    <div className="glass-card p-8 max-w-2xl">
+    <div className="glass-card p-8" style={{ maxWidth: 720, width: '100%' }}>
       <h2 className="text-2xl font-semibold text-white text-glow">
         {t(`stages.${stageKey}`)}
         {stop && <span className="text-white/50 font-normal"> · {stop.city}</span>}
       </h2>
 
       <p className="text-white/50 text-sm mt-2">
-        Placeholder — real UI arrives in Step 12.
+        Placeholder — real UI arrives in the next sub-step.
       </p>
 
-      {/* Show existing commit data when revisiting a completed stage */}
       {commitData && (
         <pre
           className="mt-4 text-xs text-white/60 overflow-x-auto rounded-lg p-3"
@@ -37,12 +40,12 @@ function PlaceholderStage({ stageKey, commit, skip, forward, commitData, stop, t
         </pre>
       )}
 
-      {/* Transition controls — exercise all three forward paths */}
-      <div className="flex gap-3 mt-7">
+      <div className="flex items-center gap-3 mt-8 pt-6"
+        style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
         <button
           onClick={() => commit({ placeholder: true, stage: stageKey })}
           disabled={transitioning}
-          className="px-4 py-2 rounded-lg text-sm font-semibold text-white"
+          className="px-5 py-2.5 rounded-lg text-sm font-semibold text-white"
           style={{
             background: transitioning
               ? 'rgba(45,212,191,0.4)'
@@ -56,8 +59,8 @@ function PlaceholderStage({ stageKey, commit, skip, forward, commitData, stop, t
         <button
           onClick={skip}
           disabled={transitioning}
-          className="px-4 py-2 rounded-lg text-sm font-medium text-white/70 hover:text-white"
-          style={{ background: 'rgba(255,255,255,0.08)' }}
+          className="px-4 py-2.5 rounded-lg text-sm font-medium text-white/65 hover:text-white"
+          style={{ background: 'rgba(255,255,255,0.07)' }}
         >
           {t('common.skip')}
         </button>
@@ -65,7 +68,7 @@ function PlaceholderStage({ stageKey, commit, skip, forward, commitData, stop, t
         <button
           onClick={forward}
           disabled={transitioning}
-          className="px-4 py-2 rounded-lg text-sm font-medium text-white/50 hover:text-white/80"
+          className="ml-auto px-3 py-2.5 rounded-lg text-sm font-medium text-white/40 hover:text-white/70"
         >
           {t('common.next')} →
         </button>
@@ -74,9 +77,12 @@ function PlaceholderStage({ stageKey, commit, skip, forward, commitData, stop, t
   )
 }
 
-// One named export per stage, matching STAGE_COMPONENTS in WizardRenderer
-export const SetupStage          = (p) => <PlaceholderStage {...p} stageKey="setup" />
-export const DestinationStage    = (p) => <PlaceholderStage {...p} stageKey="destination" />
+// ── Exports ───────────────────────────────────────────────────────────────────
+
+export const SetupStage       = SetupStageImpl
+export const DestinationStage = DestinationStageImpl
+
+// Still placeholders — replaced in 12b / 12c
 export const FlightsStage        = (p) => <PlaceholderStage {...p} stageKey="flights" />
 export const AccommodationStage  = (p) => <PlaceholderStage {...p} stageKey="accommodation" />
 export const ActivitiesStage     = (p) => <PlaceholderStage {...p} stageKey="activities" />
