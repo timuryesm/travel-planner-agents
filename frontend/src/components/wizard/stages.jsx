@@ -5,15 +5,17 @@ import { useTranslation } from 'react-i18next'
 // Stage components — barrel file
 // ─────────────────────────────────────────────────────────────────────────────
 // Real implementations are imported and re-exported here. Stages not yet built
-// fall back to PlaceholderStage, so the wizard stays walkable end-to-end while
-// Step 12 lands in sub-steps.
+// fall back to PlaceholderStage.
 //
 //   12a  SetupStage, DestinationStage                          ← done
-//   12b  FlightsStage, AccommodationStage, ActivitiesStage      ← next
-//   12c  DailyPlanStage, ReconciliationStage, FinalStage
+//   12b  FlightsStage, AccommodationStage, ActivitiesStage      ← done
+//   12c  DailyPlanStage, ReconciliationStage, FinalStage        ← next
 
 import SetupStageImpl from './SetupStage'
 import DestinationStageImpl from './DestinationStage'
+import FlightsStageImpl from './FlightsStage'
+import AccommodationStageImpl from './AccommodationStage'
+import ActivitiesStageImpl from './ActivitiesStage'
 
 // ── Placeholder for stages not yet implemented ────────────────────────────────
 
@@ -79,13 +81,13 @@ function PlaceholderStage({ stageKey, commit, skip, forward, commitData, stop, t
 
 // ── Exports ───────────────────────────────────────────────────────────────────
 
-export const SetupStage       = SetupStageImpl
-export const DestinationStage = DestinationStageImpl
+export const SetupStage         = SetupStageImpl
+export const DestinationStage   = DestinationStageImpl
+export const FlightsStage       = FlightsStageImpl
+export const AccommodationStage = AccommodationStageImpl
+export const ActivitiesStage    = ActivitiesStageImpl
 
-// Still placeholders — replaced in 12b / 12c
-export const FlightsStage        = (p) => <PlaceholderStage {...p} stageKey="flights" />
-export const AccommodationStage  = (p) => <PlaceholderStage {...p} stageKey="accommodation" />
-export const ActivitiesStage     = (p) => <PlaceholderStage {...p} stageKey="activities" />
+// Still placeholders — replaced in 12c
 export const DailyPlanStage      = (p) => <PlaceholderStage {...p} stageKey="daily_plan" />
 export const ReconciliationStage = (p) => <PlaceholderStage {...p} stageKey="reconciliation" />
 export const FinalStage          = (p) => <PlaceholderStage {...p} stageKey="final" />
