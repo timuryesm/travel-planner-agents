@@ -1,6 +1,8 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { StageCard, OptionCard, Badge, StageActions, Field, Input } from './primitives'
+import { getStageOptions } from '../../api/client'
+import useTripStore from '../../store/tripStore'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // AccommodationStage — pick one stay, or provide your own
@@ -10,48 +12,20 @@ import { StageCard, OptionCard, Badge, StageActions, Field, Input } from './prim
 //   HotelOption: { name, location, stars?, price_per_night_usd,
 //                  total_price_usd, booking_url?, property_type, provider }
 //
-// MOCK DATA — swapped for a real Booking.com / Airbnb agent call later.
+// Options come from the HotelAgent via
+// POST /trips/{id}/stages/accommodation/options?stop_index=N.
+// With AIRBNB_ENABLED False the agent returns mock data through the real path —
+// the frontend neither knows nor cares.
+//
+// `nights` is display-only. total_price_usd comes from the agent, which does
+// its own night arithmetic; we don't recompute it or the committed total could
+// disagree with what the user was shown.
 
 function nightsBetween(depart, ret) {
   if (!depart || !ret) return 7
   const d = new Date(depart), r = new Date(ret)
   const n = Math.round((r - d) / 86400000)
   return n > 0 ? n : 7
-}
-
-function mockHotels(city, nights) {
-  return [
-    {
-      name: `${city} Grand Central Hotel`,
-      location: `Downtown ${city}`,
-      stars: 4,
-      price_per_night_usd: 142,
-      total_price_usd: 142 * nights,
-      booking_url: null,
-      property_type: 'hotel',
-      provider: 'booking.com',
-    },
-    {
-      name: `Cozy Loft in Old Town`,
-      location: `Historic District, ${city}`,
-      stars: 4.8,
-      price_per_night_usd: 96,
-      total_price_usd: 96 * nights,
-      booking_url: null,
-      property_type: 'apartment',
-      provider: 'airbnb',
-    },
-    {
-      name: `${city} Riverside Suites`,
-      location: `Waterfront, ${city}`,
-      stars: 4.5,
-      price_per_night_usd: 178,
-      total_price_usd: 178 * nights,
-      booking_url: null,
-      property_type: 'hotel',
-      provider: 'booking.com',
-    },
-  ]
 }
 
 const PROVIDER_COLOR = { 'booking.com': '#38bdf8', airbnb: '#fb7185' }
@@ -67,20 +41,39 @@ function Stars({ value }) {
 
 export default function AccommodationStage({ commit, skip, forward, commitData, stop, setupData, transitioning }) {
   const { t } = useTranslation()
+  const trip = useTripStore((s) => s.trip)
 
   const city = stop?.city ?? ''
   const nights = nightsBetween(setupData?.departure_date, setupData?.return_date)
-  const hotels = mockHotels(city, nights)
 
-  const [selectedIdx, setSelectedIdx] = useState(() => {
-    const prior = commitData?.selected
-    if (!prior) return null
-    const match = hotels.findIndex((h) => h.name === prior.name)
-    return match >= 0 ? match : null
-  })
-
+  const [hotels, setHotels] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [selectedIdx, setSelectedIdx] = useState(null)
   const [ownMode, setOwnMode] = useState(false)
   const [ownText, setOwnText] = useState('')
+
+  // Fetch on mount (and whenever the stop changes).
+  // The prior-selection restore lives HERE, not in a useState initialiser:
+  // options arrive asynchronously, so an initialiser would search an empty
+  // array and silently drop the restore when revisiting a committed stage.
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    getStageOptions(trip.id, 'accommodation', stop.stop_index)
+      .then((opts) => {
+        if (cancelled) return
+        setHotels(opts)
+        const prior = commitData?.selected
+        if (prior) {
+          const match = opts.findIndex((h) => h.name === prior.name)
+          if (match >= 0) setSelectedIdx(match)
+        }
+      })
+      .catch(() => { if (!cancelled) setHotels([]) })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trip.id, stop.stop_index])
 
   function handleConfirm() {
     if (ownMode) {
@@ -112,7 +105,11 @@ export default function AccommodationStage({ commit, skip, forward, commitData, 
       title={t('accommodation.title')}
       subtitle={t('accommodation.subtitle', { city })}
     >
-      {!ownMode ? (
+      {loading ? (
+        <div className="py-10 text-center text-white/50 text-sm">
+          {t('common.loading')}
+        </div>
+      ) : !ownMode ? (
         <div className="flex flex-col gap-3">
           {hotels.map((h, i) => (
             <OptionCard key={i} selected={selectedIdx === i} onClick={() => setSelectedIdx(i)}>
@@ -155,13 +152,15 @@ export default function AccommodationStage({ commit, skip, forward, commitData, 
         </Field>
       )}
 
-      <button
-        onClick={() => setOwnMode((m) => !m)}
-        className="mt-4 text-sm hover:underline"
-        style={{ color: '#2dd4bf' }}
-      >
-        {ownMode ? `← ${t('accommodation.title')}` : t('accommodation.provideOwn')}
-      </button>
+      {!loading && (
+        <button
+          onClick={() => setOwnMode((m) => !m)}
+          className="mt-4 text-sm hover:underline"
+          style={{ color: '#2dd4bf' }}
+        >
+          {ownMode ? `← ${t('accommodation.title')}` : t('accommodation.provideOwn')}
+        </button>
+      )}
 
       <StageActions
         onConfirm={handleConfirm}

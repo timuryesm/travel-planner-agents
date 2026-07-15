@@ -1,6 +1,8 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { StageCard, OptionCard, Badge, StageActions } from './primitives'
+import { getStageOptions } from '../../api/client'
+import useTripStore from '../../store/tripStore'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ActivitiesStage — pick several activities (a LIST, unlike flights/hotels)
@@ -10,18 +12,12 @@ import { StageCard, OptionCard, Badge, StageActions } from './primitives'
 //   Activity: { name, description, estimated_cost_usd, duration_hours,
 //               category, booking_url? }
 //
-// MOCK DATA — swapped for a real Claude activities-agent call later.
-
-function mockActivities(city) {
-  return [
-    { name: `${city} Old Town Walking Tour`, description: 'A guided 2.5-hour stroll through the historic core with a local storyteller.', estimated_cost_usd: 35, duration_hours: 2.5, category: 'culture', booking_url: null },
-    { name: 'Rooftop Food Market', description: 'Sample regional dishes from a dozen stalls with skyline views at sunset.', estimated_cost_usd: 40, duration_hours: 2, category: 'food', booking_url: null },
-    { name: 'Sunrise Hike & Viewpoint', description: 'An early trek to the best panorama over the city and coastline.', estimated_cost_usd: 20, duration_hours: 4, category: 'outdoor', booking_url: null },
-    { name: 'Museum of Modern Art', description: 'Rotating contemporary exhibitions plus a permanent collection of local masters.', estimated_cost_usd: 18, duration_hours: 2, category: 'culture', booking_url: null },
-    { name: 'Evening River Cruise', description: 'A relaxed 90-minute boat ride past the illuminated waterfront landmarks.', estimated_cost_usd: 55, duration_hours: 1.5, category: 'leisure', booking_url: null },
-    { name: 'Cooking Class with a Local Chef', description: 'Hands-on preparation of three traditional dishes, then sit down to eat.', estimated_cost_usd: 75, duration_hours: 3, category: 'food', booking_url: null },
-  ]
-}
+// Options come from the Claude-backed ActivitiesAgent via
+// POST /trips/{id}/stages/activities/options?stop_index=N.
+//
+// Selection is stored as a Set of activity NAMES, not indices — which is why
+// the restore can stay in a useState initialiser here (unlike the other
+// stages): it doesn't need the fetched list to exist.
 
 const CATEGORY_COLOR = {
   culture: '#a78bfa',
@@ -32,9 +28,12 @@ const CATEGORY_COLOR = {
 
 export default function ActivitiesStage({ commit, skip, forward, commitData, stop, transitioning }) {
   const { t } = useTranslation()
+  const trip = useTripStore((s) => s.trip)
 
   const city = stop?.city ?? ''
-  const activities = mockActivities(city)
+
+  const [activities, setActivities] = useState([])
+  const [loading, setLoading] = useState(true)
 
   // Restore prior selection by matching activity names
   const [selected, setSelected] = useState(() => {
@@ -42,6 +41,16 @@ export default function ActivitiesStage({ commit, skip, forward, commitData, sto
     if (!prior?.length) return new Set()
     return new Set(prior.map((a) => a.name))
   })
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    getStageOptions(trip.id, 'activities', stop.stop_index)
+      .then((opts) => { if (!cancelled) setActivities(opts) })
+      .catch(() => { if (!cancelled) setActivities([]) })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [trip.id, stop.stop_index])
 
   function toggle(name) {
     setSelected((cur) => {
@@ -60,6 +69,19 @@ export default function ActivitiesStage({ commit, skip, forward, commitData, sto
   const totalCost = activities
     .filter((a) => selected.has(a.name))
     .reduce((sum, a) => sum + a.estimated_cost_usd, 0)
+
+  if (loading) {
+    return (
+      <StageCard
+        title={t('activities.title')}
+        subtitle={t('activities.subtitle', { city })}
+      >
+        <div className="py-10 text-center text-white/50 text-sm">
+          {t('common.loading')}
+        </div>
+      </StageCard>
+    )
+  }
 
   return (
     <StageCard

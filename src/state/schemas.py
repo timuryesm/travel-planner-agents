@@ -14,8 +14,8 @@ Usage:
     data = FlightsCommitData.model_validate(commit.commit_data)
 
 Re-exports:
-    FlightOption, FlightLeg, HotelOption, Activity are re-exported here
-    so the rest of the codebase imports from one place.
+    Destination, FlightOption, FlightLeg, HotelOption, Activity are
+    re-exported here so the rest of the codebase imports from one place.
 """
 from __future__ import annotations
 
@@ -24,20 +24,20 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
-# Re-export existing models unchanged — import from here, not from travel_plan
-from src.state.travel_plan import Activity, FlightLeg, FlightOption, HotelOption  # noqa: F401
+# Re-export existing models unchanged — import from here, not from travel_plan.
+# Destination lives in travel_plan because TravelPlan.proposed_destinations
+# needs it and this module already imports from there; defining it here and
+# importing it back would be circular.
+from src.state.travel_plan import (  # noqa: F401
+    Activity,
+    Destination,
+    FlightLeg,
+    FlightOption,
+    HotelOption,
+)
 
 
 # ── New models (spec section 4) ───────────────────────────────────────────────
-
-class Destination(BaseModel):
-    """One city in the destination commit."""
-    city: str
-    country: str
-    why_chosen_summary: str
-    season_note: str
-    safety_note: str   # sourced from a live travel-advisory signal, not model memory
-
 
 class DayPlan(BaseModel):
     """

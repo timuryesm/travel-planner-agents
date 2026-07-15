@@ -1,6 +1,8 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { StageCard, OptionCard, Badge, StageActions } from './primitives'
+import { getStageOptions } from '../../api/client'
+import useTripStore from '../../store/tripStore'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DestinationStage — pick one city, or several when multi_city is on
@@ -18,73 +20,41 @@ import { StageCard, OptionCard, Badge, StageActions } from './primitives'
 //   false → radio behaviour, exactly one city
 //   true  → multi-select, ordered by pick order (index i → stop_index i)
 //
-// MOCK DATA: replaced by a real agent call in the follow-up "agent endpoints"
-// step. The shape matches the Destination schema exactly, so the swap is a
-// one-line change (fetch instead of constant).
-
-const MOCK_DESTINATIONS = [
-  {
-    city: 'Lisbon',
-    country: 'Portugal',
-    why_chosen_summary:
-      'Mild weather year-round, walkable historic districts, and some of the best value dining in Western Europe.',
-    season_note: 'Spring and early autumn are ideal — warm days, few crowds.',
-    safety_note: 'Very safe for travellers. Standard pickpocket awareness in tourist areas.',
-  },
-  {
-    city: 'Kyoto',
-    country: 'Japan',
-    why_chosen_summary:
-      'Over a thousand temples, traditional machiya streets, and a food culture that rewards wandering.',
-    season_note: 'Cherry blossom in early April; autumn foliage late November.',
-    safety_note: 'Among the safest destinations worldwide. Minimal precautions needed.',
-  },
-  {
-    city: 'Mexico City',
-    country: 'Mexico',
-    why_chosen_summary:
-      'World-class museums, a defining food scene, and vibrant neighbourhoods like Roma and Condesa.',
-    season_note: 'Dry season November–April brings clear skies and comfortable temperatures.',
-    safety_note: 'Stick to central neighbourhoods; use registered taxis or rideshare after dark.',
-  },
-  {
-    city: 'Reykjavík',
-    country: 'Iceland',
-    why_chosen_summary:
-      'A compact capital that opens onto glaciers, geysers, and the northern lights within an hour of leaving town.',
-    season_note: 'September–March for aurora; June–August for midnight sun and hiking.',
-    safety_note: 'Extremely safe. Main risks are weather-related — check road conditions.',
-  },
-  {
-    city: 'Porto',
-    country: 'Portugal',
-    why_chosen_summary:
-      'Riverside cellars, tiled facades, and a slower pace than Lisbon at a lower price point.',
-    season_note: 'May–October for warm, dry weather along the Douro.',
-    safety_note: 'Very safe. Steep cobbled streets — sturdy shoes recommended.',
-  },
-  {
-    city: 'Seoul',
-    country: 'South Korea',
-    why_chosen_summary:
-      'Palaces beside skyscrapers, 24-hour markets, and the best public transit of any megacity.',
-    season_note: 'April–June and September–November avoid the humid summer and cold winter.',
-    safety_note: 'Exceptionally safe, including late at night. Excellent English signage on transit.',
-  },
-]
+// Options now come from the DestinationAgent via
+// POST /trips/{id}/stages/destination/options (no stop_index — there are no
+// stops yet; creating them is what this stage's commit does).
+//
+// handleConfirm re-picks the five DestinationCommitData fields explicitly
+// rather than committing whole option objects: the agent's model_dump may
+// carry extra keys (advisory level, scores) that the commit schema rejects.
 
 export default function DestinationStage({ commit, commitData, setupData, transitioning }) {
   const { t } = useTranslation()
+  const trip = useTripStore((s) => s.trip)
 
   const multiCity = setupData?.multi_city ?? false
 
+  const [destinations, setDestinations] = useState([])
+  const [loading, setLoading] = useState(true)
+
   // Prefill from an existing commit when revisiting this stage.
-  // We match on city name since that's the stable identifier here.
+  // Safe to initialise synchronously: we store city *names*, not indices into
+  // the fetched list, so this doesn't depend on options having arrived.
   const [selected, setSelected] = useState(() => {
     const prior = commitData?.destinations
     if (!prior?.length) return []
     return prior.map((d) => d.city)
   })
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    getStageOptions(trip.id, 'destination')
+      .then((opts) => { if (!cancelled) setDestinations(opts) })
+      .catch(() => { if (!cancelled) setDestinations([]) })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [trip.id])
 
   function toggle(city) {
     if (multiCity) {
@@ -100,22 +70,32 @@ export default function DestinationStage({ commit, commitData, setupData, transi
 
   function handleConfirm() {
     // Preserve pick order — destinations[i] maps to stop_index i
-    const destinations = selected
-      .map((city) => MOCK_DESTINATIONS.find((d) => d.city === city))
+    const chosen = selected
+      .map((city) => destinations.find((d) => d.city === city))
       .filter(Boolean)
       .map(({ city, country, why_chosen_summary, season_note, safety_note }) => ({
         city, country, why_chosen_summary, season_note, safety_note,
       }))
 
-    commit({ destinations })
+    commit({ destinations: chosen })
   }
 
   const valid = selected.length >= 1
 
+  if (loading) {
+    return (
+      <StageCard title={t('destination.title')} subtitle={t('destination.subtitle')}>
+        <div className="py-10 text-center text-white/50 text-sm">
+          {t('common.loading')}
+        </div>
+      </StageCard>
+    )
+  }
+
   return (
     <StageCard title={t('destination.title')} subtitle={t('destination.subtitle')}>
       <div className="flex flex-col gap-3">
-        {MOCK_DESTINATIONS.map((d) => {
+        {destinations.map((d) => {
           const isSelected = selected.includes(d.city)
           const order = selected.indexOf(d.city) + 1
 

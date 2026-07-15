@@ -60,6 +60,26 @@ class Activity(BaseModel):
     booking_url: Optional[str] = None
 
 
+class Destination(BaseModel):
+    """
+    One candidate city proposed by the DestinationAgent.
+
+    Defined here rather than in schemas.py because TravelPlan needs it and
+    schemas.py already imports FROM this module — declaring it there and
+    importing it back would be a circular import. schemas.py re-exports it,
+    so `from src.state.schemas import Destination` keeps working everywhere.
+
+    Same shape as DestinationCommitData's list element by design: the agent's
+    output IS the wizard's commit payload, and one definition means the two
+    can't drift apart.
+    """
+    city: str
+    country: str
+    why_chosen_summary: str
+    season_note: str
+    safety_note: str   # sourced from a live travel-advisory signal, not model memory
+
+
 class WeatherSummary(BaseModel):
     location: str
     forecast_by_day: dict[str, str]   # "2025-08-01": "Sunny, 28°C"
@@ -95,6 +115,13 @@ class TravelPlan(BaseModel):
     activities: Optional[list[Activity]] = None
     weather: Optional[WeatherSummary] = None
     budget: Optional[BudgetBreakdown] = None
+
+    # DestinationAgent writes here. Declared rather than set dynamically:
+    # TravelPlan is a Pydantic model, so assigning an undeclared attribute
+    # raises ValueError — safe_run then swallows it and the route returns
+    # 200 with an empty options list, which reads as "no results found"
+    # rather than a crash.
+    proposed_destinations: Optional[list[Destination]] = None
 
     # Orchestrator writes here to explain its decisions
     itinerary_markdown: Optional[str] = None
