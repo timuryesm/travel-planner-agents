@@ -32,8 +32,10 @@ from typing import AsyncGenerator
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from src.config.logging_config import configure_logging
 from src.api.routes.auth import router as auth_router
 from src.api.routes.trips import router as trips_router
+from src.api.routes.stage_options import router as stage_options_router
 
 
 # ── Startup / shutdown ────────────────────────────────────────────────────────
@@ -47,12 +49,19 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     command.upgrade() is synchronous but fast (it only applies pending
     migrations, or no-ops if already at head), so calling it in the
     lifespan without an executor is acceptable.
+
+    ORDER MATTERS: command.upgrade() imports alembic/env.py, which calls
+    fileConfig(alembic.ini) and sets the root logger to WARN inside this
+    process. configure_logging() must run *after* it, or alembic wins and
+    every agent's logger.info() is silently dropped.
     """
     from alembic import command
     from alembic.config import Config
 
     alembic_cfg = Config("alembic.ini")
     command.upgrade(alembic_cfg, "head")
+
+    configure_logging()  # ← must follow command.upgrade(); see docstring
 
     yield  # application runs here
 
@@ -99,6 +108,7 @@ app.add_middleware(
 
 app.include_router(auth_router)
 app.include_router(trips_router)
+app.include_router(stage_options_router)
 
 
 # ── Health check ──────────────────────────────────────────────────────────────

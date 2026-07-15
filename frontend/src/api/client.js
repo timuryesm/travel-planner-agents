@@ -190,11 +190,82 @@ export function getTrip(tripId) {
 //   { action: 'SKIP' }
 //   { action: 'FORWARD' }
 //   { action: 'BACK', target_stage, target_stop_index }
-export function transition(tripId, action) {
-  return request(`/trips/${tripId}/transition`, {
+export async function transition(tripId, action) {
+  const data = await request(`/trips/${tripId}/transition`, {
     method: 'POST',
     body: action,
   })
+  // A BACK triggers backend cascade-invalidate of downstream stages; their
+  // cached options were computed from commit state that no longer holds.
+  if (action?.action === 'BACK') {
+    invalidateStageOptions(tripId)
+  }
+  return data
+}
+
+// ── Stage options endpoint ────────────────────────────────────────────────────
+// Runs the matching Phase A agent for a wizard stage and returns proposed
+// options shaped for that stage's commit payload.
+//
+//   getStageOptions(tripId, 'destination')          → [Destination]
+//   getStageOptions(tripId, 'flights', 0)           → [FlightOption]
+//   getStageOptions(tripId, 'accommodation', 0)     → [HotelOption]
+//   getStageOptions(tripId, 'activities', 1)        → [Activity]
+//
+// stopIndex is required for flights / accommodation / activities, omitted for
+// destination. Returns the `options` array from the response.
+//
+// Caching, and why it isn't optional:
+//   React 18 StrictMode double-invokes effects in dev, so every stage mount
+//   fires this twice. Each call runs a real agent — and with SKYSCANNER_ENABLED
+//   / AIRBNB_ENABLED on, each agent run costs quota. We cache the in-flight
+//   *promise* per (trip, stage, stop): the second caller joins the first
+//   request instead of starting a new one. Once resolved, the cache also means
+//   re-visiting a stage doesn't re-run the agent.
+//
+//   Failures are evicted so a transient error isn't cached forever.
+//   Pass { force: true } to deliberately re-run an agent (a "refresh options"
+//   button), and call invalidateStageOptions() when commit state changes make
+//   the cached options stale — see transition() below.
+
+const _optionsCache = new Map() // key → Promise<options[]>
+
+function _optionsKey(tripId, stage, stopIndex) {
+  return `${tripId}:${stage}:${stopIndex ?? '-'}`
+}
+
+export function getStageOptions(tripId, stage, stopIndex = null, { force = false } = {}) {
+  const key = _optionsKey(tripId, stage, stopIndex)
+
+  if (!force && _optionsCache.has(key)) {
+    return _optionsCache.get(key)
+  }
+
+  const qs = stopIndex !== null ? `?stop_index=${stopIndex}` : ''
+  const pending = request(`/trips/${tripId}/stages/${stage}/options${qs}`, {
+    method: 'POST',
+  })
+    .then((data) => data?.options ?? [])
+    .catch((err) => {
+      _optionsCache.delete(key) // don't cache failures
+      throw err
+    })
+
+  _optionsCache.set(key, pending)
+  return pending
+}
+
+// Drop cached options. Call with no stage to clear an entire trip — which is
+// what a BACK / cascade-invalidate needs, since downstream stages' inputs
+// changed and their old options no longer apply.
+export function invalidateStageOptions(tripId, stage = null, stopIndex = null) {
+  if (stage === null) {
+    for (const key of _optionsCache.keys()) {
+      if (key.startsWith(`${tripId}:`)) _optionsCache.delete(key)
+    }
+    return
+  }
+  _optionsCache.delete(_optionsKey(tripId, stage, stopIndex))
 }
 
 // ── Action builders ───────────────────────────────────────────────────────────

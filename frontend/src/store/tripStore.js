@@ -27,6 +27,20 @@ import * as api from '../api/client'
 //   currentStop()     — the Stop object for current_stop_index, or null
 //   setupData()       — the committed setup payload, or null
 
+// ── Trip-creation in-flight guard ────────────────────────────────────────────
+// App.jsx auto-creates a trip from an effect guarded by `!trip`. That guard
+// reads state which only updates AFTER POST /trips/ returns, so anything that
+// re-renders during the request re-fires the effect and mints a second trip —
+// a real orphan row in Postgres, not just a wasted call. React 18 StrictMode
+// makes this fire every time in dev, but it's a genuine check-then-act race
+// that would survive to production; StrictMode only makes it honest.
+//
+// Holding the in-flight promise here means concurrent callers join the
+// existing request instead of starting a new one. Module scope, not store
+// state, because a `set()` wouldn't be visible to a caller that's already
+// mid-effect in the same synchronous pass.
+let _startInFlight = null
+
 export const useTripStore = create((set, get) => ({
   // ── State ──────────────────────────────────────────────────────────────────
   trip: null,
@@ -53,15 +67,29 @@ export const useTripStore = create((set, get) => ({
 
   // ── Trip lifecycle ─────────────────────────────────────────────────────────
 
+  // Idempotent while a create is in flight: concurrent callers get the same
+  // promise and the same trip. Once it settles the guard clears, so an
+  // explicit "new trip" action later still works normally.
   startTrip: async () => {
-    return get()._run(() => api.createTrip())
+    if (_startInFlight) return _startInFlight
+
+    _startInFlight = get()
+      ._run(() => api.createTrip())
+      .finally(() => { _startInFlight = null })
+
+    return _startInFlight
   },
 
   loadTrip: async (tripId) => {
     return get()._run(() => api.getTrip(tripId))
   },
 
-  clearTrip: () => set({ trip: null, error: null }),
+  clearTrip: () => {
+    // Drop any in-flight create too — on logout its result is unwanted, and
+    // leaving the guard set would block the next user's first trip.
+    _startInFlight = null
+    set({ trip: null, error: null })
+  },
 
   // ── Transitions ────────────────────────────────────────────────────────────
   // All four route through the backend's transition() chokepoint. The response
