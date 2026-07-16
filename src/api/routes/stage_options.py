@@ -25,6 +25,7 @@ import uuid
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -89,7 +90,7 @@ async def get_stage_options(
 
     # Destination discovery needs no city; the others do
     if stage == "destination":
-        options = destination_fetch(fetcher, setup)
+        options = await run_in_threadpool(destination_fetch, fetcher, setup)
         return StageOptionsResponse(
             stage=stage, stop_index=None, city=None, options=options
         )
@@ -107,7 +108,7 @@ async def get_stage_options(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"No stop at index {stop_index}.",
             )
-        options = fetcher(setup, stop.city)
+        options = await run_in_threadpool(fetcher, setup, stop.city)
         return StageOptionsResponse(
             stage=stage, stop_index=stop_index, city=stop.city, options=options
         )
