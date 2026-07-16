@@ -30,34 +30,69 @@ class CommitType(str, Enum):
 
 
 class TripLevelStage(str, Enum):
-    """Stages that belong to the trip as a whole (not per-stop)."""
+    """
+    Stages that belong to the trip as a whole (not per-stop).
+
+    The hub-and-spoke model is what makes this list long and the stop-level
+    list short. One country, one hub city, optional day-trips out and back:
+
+        - flights        one roundtrip, origin <-> hub. Not per-city.
+        - accommodation  one stay, in the hub, for the whole period.
+        - daily_plan     one plan across the whole trip, not one per city.
+
+    intercity is conditional: it only exists when more than one city was
+    committed, because with a single city there is nowhere to travel to.
+    flattened_sequence() omits it when num_stops < 2 — see position.py.
+    """
     setup = "setup"
-    destination = "destination"
-    reconciliation = "reconciliation"
+    country = "country"
+    city = "city"
+    flights = "flights"
+    intercity = "intercity"
+    accommodation = "accommodation"
+    daily_plan = "daily_plan"
     final = "final"
 
     @classmethod
     def ordered(cls) -> list[TripLevelStage]:
-        """Fixed sequence order for navigation."""
-        return [cls.setup, cls.destination, cls.reconciliation, cls.final]
+        """
+        Fixed sequence order for navigation.
+
+        Includes intercity unconditionally — this is the canonical order of
+        every trip-level stage that *can* exist. Whether a given trip actually
+        has an intercity stage is decided by flattened_sequence(num_stops).
+        Callers that sort commit rows (see trips.py) want this full list.
+        """
+        return [
+            cls.setup,
+            cls.country,
+            cls.city,
+            cls.flights,
+            cls.intercity,
+            cls.accommodation,
+            cls.daily_plan,
+            cls.final,
+        ]
 
 
 class StopLevelStage(str, Enum):
-    """Stages that repeat once per stop in the per-stop block."""
-    flights = "flights"
-    accommodation = "accommodation"
+    """
+    Stages that repeat once per stop in the per-stop block.
+
+    Only activities. Under hub-and-spoke, flights / accommodation / daily_plan
+    all became trip-level (see TripLevelStage), so the per-stop block collapsed
+    from four stages to one: for each city you visit, which things to do there.
+    """
     activities = "activities"
-    daily_plan = "daily_plan"
 
     @classmethod
     def ordered(cls) -> list[StopLevelStage]:
         """Fixed sequence order within a single stop."""
-        return [cls.flights, cls.accommodation, cls.activities, cls.daily_plan]
+        return [cls.activities]
 
 
 class TripStatus(str, Enum):
     in_progress = "in_progress"
-    reconciling = "reconciling"   # user is at the reconciliation stage
     complete = "complete"          # final plan has been assembled
     abandoned = "abandoned"        # user walked away
 
@@ -69,11 +104,15 @@ class TripStatus(str, Enum):
 
 TRIP_PRE_STOP_STAGES: list[TripLevelStage] = [
     TripLevelStage.setup,
-    TripLevelStage.destination,
+    TripLevelStage.country,
+    TripLevelStage.city,
+    TripLevelStage.flights,
+    TripLevelStage.intercity,
+    TripLevelStage.accommodation,
 ]
 
 TRIP_POST_STOP_STAGES: list[TripLevelStage] = [
-    TripLevelStage.reconciliation,
+    TripLevelStage.daily_plan,
     TripLevelStage.final,
 ]
 

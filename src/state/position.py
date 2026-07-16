@@ -23,6 +23,7 @@ from src.state.enums import (
     STOP_STAGES_IN_ORDER,
     TRIP_POST_STOP_STAGES,
     TRIP_PRE_STOP_STAGES,
+    TripLevelStage,
 )
 
 
@@ -32,8 +33,8 @@ class Position:
     A point in the flattened wizard sequence.
 
     Trip-level stage:  Position(stage="setup")           stop_index=None
-    Stop-level stage:  Position(stage="flights",          stop_index=0)
-                       Position(stage="daily_plan",       stop_index=2)
+    Stop-level stage:  Position(stage="activities",      stop_index=0)
+                       Position(stage="activities",      stop_index=2)
 
     frozen=True makes Position hashable and immutable — safe to use as a
     dict key or set member, and equality comparison works out of the box
@@ -64,26 +65,35 @@ def flattened_sequence(num_stops: int) -> list[Position]:
 
     The result is the canonical navigation order:
 
-        setup → destination
-          → flights[0] → accommodation[0] → activities[0] → daily_plan[0]
-          → flights[1] → accommodation[1] → activities[1] → daily_plan[1]
-          → …
-          → reconciliation → final
+        setup → country → city → flights → [intercity] → accommodation
+          → activities[0] → activities[1] → … → daily_plan → final
 
-    num_stops=0 (before destination is committed):
-        [setup, destination, reconciliation, final]
+    num_stops=0 (before the city stage is committed):
+        [setup, country, city, flights, accommodation, daily_plan, final]
 
-    num_stops=1 (single-city):
-        [setup, destination, flights[0], accommodation[0],
-         activities[0], daily_plan[0], reconciliation, final]
+    num_stops=1 (single city — no intercity travel):
+        [setup, country, city, flights, accommodation,
+         activities[0], daily_plan, final]
 
-    This function is the single place that encodes stage ordering. advance(),
-    invalidate_after(), and the reconciliation scan all derive their ordering
-    from calling this function — never by duplicating the list manually.
+    num_stops=3 (hub + two day-trips):
+        [setup, country, city, flights, intercity, accommodation,
+         activities[0], activities[1], activities[2], daily_plan, final]
+
+    This function is the single place that encodes stage ordering. advance()
+    and invalidate_after() derive their ordering from calling this function —
+    never by duplicating the list manually.
     """
     sequence: list[Position] = []
 
     for stage in TRIP_PRE_STOP_STAGES:
+        # Intercity travel only exists when there is somewhere to travel to.
+        # A single-city trip has no hub-to-spoke leg, so the stage is absent
+        # from the sequence rather than present-and-unreachable: an unvisited
+        # commit row would claim the user skipped a decision that was never
+        # offered. num_stops already determines the shape of the sequence, so
+        # keying off it here keeps this a pure function of its one argument.
+        if stage is TripLevelStage.intercity and num_stops < 2:
+            continue
         sequence.append(Position(stage=stage.value))
 
     for stop_index in range(num_stops):
@@ -102,8 +112,7 @@ def positions_after(sequence: list[Position], target: Position) -> list[Position
     """
     Return every position that comes after `target` in `sequence`.
 
-    Used by invalidate_after() to find the blast radius of a BACK action,
-    and by the reconciliation scan to find all downstream stages.
+    Used by invalidate_after() to find the blast radius of a BACK action.
 
     Raises ValueError if target is not found in sequence — which would mean
     the trip's current_stage / current_stop_index is inconsistent with the
@@ -127,9 +136,9 @@ def next_position(sequence: list[Position], current: Position) -> Optional[Posit
     Returns None if `current` is the last position (i.e. we are already at
     `final` — the wizard is complete).
 
-    This is what advance() calls. The loop-seam logic (stop N's last stage
-    leads to stop N+1's first stage, the last stop's last stage leads to
-    reconciliation) is already embedded in the sequence order returned by
+    This is what advance() calls. The loop-seam logic (stop N's activities
+    lead to stop N+1's activities, the last stop's activities lead to
+    daily_plan) is already embedded in the sequence order returned by
     flattened_sequence(), so advance() needs no special-casing — it just
     takes the next element.
     """
