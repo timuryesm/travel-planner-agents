@@ -189,3 +189,121 @@ async def create_stops(
                 stop_id=stop.id,  # uuid4 generated Python-side — available immediately
                 stage=stage.value,
                 commit_type=CommitType.unvisited.value,
+                completed=False,
+            )
+            stop.stop_stage_commits.append(commit)
+
+    await db.flush()
+
+
+# ── delete_stops ──────────────────────────────────────────────────────────────
+
+async def delete_stops(trip: Trip, db: AsyncSession) -> None:
+    """
+    Delete all Stop rows for the trip and clear the in-memory collection.
+
+    StopStageCommit rows are cleaned up automatically: Stop.stop_stage_commits
+    has cascade="all, delete-orphan", so SQLAlchemy deletes child commit rows
+    when their parent stop is deleted.
+
+    Precondition: trip must have been loaded via load_trip() so that all
+    stops and their stop_stage_commits are already in the session. If they
+    are not in session, SQLAlchemy would try to SELECT them before deleting,
+    which would fail in async context with a lazy-load error.
+
+    After this function returns:
+        len(trip.stops) == 0
+        all downstream stop_stage_commits rows are gone from the DB
+    """
+    for stop in list(trip.stops):
+        await db.delete(stop)
+
+    trip.stops.clear()   # keep in-memory state consistent with DB state
+    await db.flush()
+
+
+# ── create_intercity_commit ───────────────────────────────────────────────────
+
+async def create_intercity_commit(trip: Trip, db: AsyncSession) -> None:
+    """
+    Add the trip's intercity TripStageCommit row if it does not already exist.
+
+    Called by transition() when the city commit lands with more than one city.
+    The stage is conditional on the trip's shape — with a single city there is
+    no hub-to-spoke leg to plan — so its commit row is created and destroyed
+    alongside the stops, rather than seeded at trip creation like the other
+    seven. This mirrors create_stops / delete_stops exactly.
+
+    flattened_sequence() independently omits the intercity position below two
+    stops, so the sequence and the commit rows agree without either consulting
+    the other: both derive from the same fact, the number of cities.
+
+    Idempotent — safe to call when the row already exists (e.g. the user adds a
+    third city to a trip that already had two).
+    """
+    existing = next(
+        (
+            c for c in trip.trip_stage_commits
+            if c.stage == TripLevelStage.intercity.value
+        ),
+        None,
+    )
+    if existing is not None:
+        return
+
+    commit = TripStageCommit(
+        trip_id=trip.id,
+        stage=TripLevelStage.intercity.value,
+        commit_type=CommitType.unvisited.value,
+        completed=False,
+    )
+    trip.trip_stage_commits.append(commit)
+    await db.flush()
+
+
+# ── delete_intercity_commit ───────────────────────────────────────────────────
+
+async def delete_intercity_commit(trip: Trip, db: AsyncSession) -> None:
+    """
+    Remove the trip's intercity TripStageCommit row if present.
+
+    Called by transition() when the city commit lands with exactly one city —
+    including when a user goes back and removes cities from a multi-city trip.
+    Leaving the row behind would put a stage in the sidebar that the sequence
+    no longer contains, and _find_trip_commit() would happily return a commit
+    for a position that cannot be reached.
+
+    Idempotent — safe to call when there is no row (the common single-city case).
+    """
+    existing = next(
+        (
+            c for c in trip.trip_stage_commits
+            if c.stage == TripLevelStage.intercity.value
+        ),
+        None,
+    )
+    if existing is None:
+        return
+
+    await db.delete(existing)
+    trip.trip_stage_commits.remove(existing)   # keep in-memory state consistent
+    await db.flush()
+
+
+# ── save_commit ───────────────────────────────────────────────────────────────
+
+async def save_commit(
+    commit: TripStageCommit | StopStageCommit,
+    db: AsyncSession,
+) -> None:
+    """
+    Flush a mutated commit row to the database.
+
+    When commit rows are loaded via load_trip(), SQLAlchemy tracks all
+    attribute mutations automatically — db.add() is a no-op for objects
+    already in the session. This function exists as an explicit escape hatch
+    for code paths that mutate a commit row outside of transition() and need
+    to flush without committing the full session.
+    """
+    db.add(commit)   # no-op if already tracked; ensures new objects are added
+    await db.flush()
