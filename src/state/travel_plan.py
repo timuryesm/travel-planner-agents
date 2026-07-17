@@ -60,24 +60,74 @@ class Activity(BaseModel):
     booking_url: Optional[str] = None
 
 
-class Destination(BaseModel):
+class Country(BaseModel):
     """
-    One candidate city proposed by the DestinationAgent.
+    One candidate country proposed by the CountryAgent.
 
-    Defined here rather than in schemas.py because TravelPlan needs it and
-    schemas.py already imports FROM this module — declaring it there and
-    importing it back would be a circular import. schemas.py re-exports it,
-    so `from src.state.schemas import Destination` keeps working everywhere.
+    Two notes, two different sources, deliberately:
 
-    Same shape as DestinationCommitData's list element by design: the agent's
-    output IS the wizard's commit payload, and one definition means the two
-    can't drift apart.
+      climate_note  comes from the model. What October is like in Japan does not
+                    change year to year, so this is stable knowledge, not a
+                    forecast. There is also no forecast to be had — Open-Meteo
+                    needs coordinates, and at country-selection time there is no
+                    city yet.
+
+      safety_note   comes from the live State Department advisory feed, never
+                    from the model. Advisories change, and stale or invented
+                    safety guidance is worse than none. If the lookup fails the
+                    claim is dropped rather than guessed.
+    """
+    name: str
+    why_chosen_summary: str
+    climate_note: str
+    safety_note: str
+
+
+class City(BaseModel):
+    """
+    One candidate city proposed by the CityAgent, within the committed country.
+
+    No country field: there is exactly one country per trip, held by the country
+    commit. A copy on every city could disagree with it.
+
+    No safety_note either — advisories are published per country, so the note on
+    Country covers every city in it. Duplicating it here would imply a
+    city-level signal that does not exist.
     """
     city: str
-    country: str
     why_chosen_summary: str
-    season_note: str
-    safety_note: str   # sourced from a live travel-advisory signal, not model memory
+    climate_note: str
+
+
+class Citation(BaseModel):
+    """
+    A source behind an agent's claim, from Claude's web search tool.
+
+    The tool returns url / title / cited_text on every web_search_result_location
+    and citations are always enabled. Anthropic's terms require citations to be
+    shown when API output is displayed to end users, so these are not optional
+    decoration — the UI must render them.
+    """
+    url: str
+    title: str
+    cited_text: Optional[str] = None
+
+
+class IntercityOption(BaseModel):
+    """
+    One way to get from the hub city to a spoke city and back.
+
+    There is no API for "trains from Tokyo to Kyoto and what they cost", so this
+    comes from Claude with web search rather than a booking provider. That makes
+    the numbers indicative, not quotes: cost_usd is an estimate and sources is
+    what it was estimated from. Both must reach the user.
+    """
+    mode: str                      # "train" | "bus" | "flight" | "ferry" | "car"
+    description: str
+    duration_hours: float
+    cost_usd: float                # per person, round trip, estimated
+    booking_note: Optional[str] = None
+    sources: list[Citation] = Field(default_factory=list)
 
 
 class WeatherSummary(BaseModel):
@@ -88,6 +138,7 @@ class WeatherSummary(BaseModel):
 
 class BudgetBreakdown(BaseModel):
     flights_usd: float = 0.0
+    intercity_usd: float = 0.0     # hub-to-spoke day trips
     hotel_usd: float = 0.0
     activities_usd: float = 0.0
     miscellaneous_usd: float = 0.0
@@ -116,12 +167,14 @@ class TravelPlan(BaseModel):
     weather: Optional[WeatherSummary] = None
     budget: Optional[BudgetBreakdown] = None
 
-    # DestinationAgent writes here. Declared rather than set dynamically:
-    # TravelPlan is a Pydantic model, so assigning an undeclared attribute
-    # raises ValueError — safe_run then swallows it and the route returns
-    # 200 with an empty options list, which reads as "no results found"
-    # rather than a crash.
-    proposed_destinations: Optional[list[Destination]] = None
+    # Discovery agents write here. Declared, not set dynamically: TravelPlan is
+    # a Pydantic model, so assigning an undeclared attribute raises — safe_run
+    # then swallows it and the route returns 200 with an empty options list,
+    # which reads as "no results found" rather than a crash. That exact bug cost
+    # an evening.
+    proposed_countries: Optional[list[Country]] = None
+    proposed_cities: Optional[list[City]] = None
+    intercity_options: Optional[list[IntercityOption]] = None
 
     # Orchestrator writes here to explain its decisions
     itinerary_markdown: Optional[str] = None
