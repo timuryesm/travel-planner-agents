@@ -9,6 +9,7 @@ from src.agents.flight_agent import FlightAgent
 from src.agents.hotel_agent import HotelAgent
 from src.agents.activities_agent import ActivitiesAgent
 from src.agents.country_agent import CountryAgent
+from src.agents.city_agent import CityAgent
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -31,6 +32,15 @@ from src.agents.country_agent import CountryAgent
 # Feature flags are respected implicitly: the flight and hotel agents check
 # SKYSCANNER_ENABLED / AIRBNB_ENABLED internally and fall back to mock when the
 # flags are False, so the adapter simply gets whatever the agent decided.
+#
+# NOTE on safe_run and empty lists: safe_run catches everything, so a crashed
+# agent returns a plan with its result field still None and the fetcher answers
+# []. The route then serves 200 with no options, which is indistinguishable
+# from "found nothing" at the browser. base_agent.safe_run now logs the
+# traceback, so the failure is visible in the uvicorn log — read the log, not
+# the response, when an options list comes back empty. plan.errors carries the
+# message if we ever want the route to 5xx instead; see the discovery-agent
+# note on city_options.
 
 
 @dataclass
@@ -71,12 +81,22 @@ def _synthetic_request(ctx: OptionsContext, destination: str) -> TravelRequest:
     """
     Build a TravelRequest from the committed setup payload plus a destination.
 
+    `destination` is whatever "where" means at the calling stage: the hub city
+    for flights and accommodation, the country for city discovery, the target
+    city for activities, and "" for country discovery, where no destination
+    exists yet. TravelRequest has exactly one such field and each fetcher fills
+    it with the answer relevant to its own question.
+
     travel_style, with_kids and preferences_text are passed through as
     themselves. They used to be folded into `interests` — with_kids silently
     dropped and preferences_text split on whitespace, so a sentence like
     "Visit all popular places and restaurants" reached Claude as the interests
     ["Visit", "all", "popular", "places", "and", "restaurants"]. The signals the
     agent is supposed to reason over were being destroyed on the way in.
+
+    Note this carries the SETUP preference text only. A stage-scoped hint from
+    the request body travels separately, on the agent constructor, because it
+    answers a different question — see CityAgent.
     """
     setup = ctx.setup
     return TravelRequest(
@@ -108,6 +128,32 @@ def country_options(ctx: OptionsContext) -> list[dict]:
     plan = TravelPlan(request=req)
     plan = CountryAgent(exclude=ctx.exclude, limit=ctx.limit).safe_run(plan)
     return [c.model_dump() for c in (plan.proposed_countries or [])]
+
+
+def city_options(ctx: OptionsContext) -> list[dict]:
+    """
+    Cities within the committed country.
+
+    The country goes in as the destination — it is the "where" this stage
+    reasons about. preference_text is the hint the user typed on THIS stage and
+    goes to the constructor, not into the request: the request already carries
+    the setup preferences, and the two are different questions.
+
+    Unlike CountryAgent, CityAgent has no fabricated fallback — if Claude is
+    unreachable there is no honest way to name cities in an arbitrary country.
+    It retries once and then raises, which safe_run converts into an empty list
+    here. That is a real gap: an empty city list is a dead wizard, not a
+    degraded one. The traceback will be in the uvicorn log (see base_agent), and
+    plan.errors holds the message if we decide the route should 5xx instead.
+    """
+    req = _synthetic_request(ctx, destination=ctx.country or "")
+    plan = TravelPlan(request=req)
+    plan = CityAgent(
+        exclude=ctx.exclude,
+        limit=ctx.limit,
+        preference_text=ctx.preference_text,
+    ).safe_run(plan)
+    return [c.model_dump() for c in (plan.proposed_cities or [])]
 
 
 def flight_options(ctx: OptionsContext) -> list[dict]:
@@ -144,10 +190,11 @@ def activities_options(ctx: OptionsContext) -> list[dict]:
 #
 # Not every wizard stage is here. setup and daily_plan propose nothing; final
 # has its own endpoint because it returns one assembled object rather than a
-# list of options. city and intercity land in later steps.
+# list of options. intercity lands in Track 2.
 
 STAGE_FETCHERS: dict[str, Callable[[OptionsContext], list[dict]]] = {
     "country": country_options,
+    "city": city_options,
     "flights": flight_options,
     "accommodation": accommodation_options,
     "activities": activities_options,
