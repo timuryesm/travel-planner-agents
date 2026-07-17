@@ -4,18 +4,21 @@ Trip repository — the async database layer.
 All SQL lives here. transition() and the API routes call these functions;
 neither touches the session directly.
 
-Six functions in dependency order:
+Eight functions in dependency order:
 
-    create_trip    — new wizard session + 4 TripStageCommit rows
-    load_trip      — full eager load (required before calling transition())
-    list_trips     — lightweight list for the trips index route
-    create_stops   — called by transition() after destination is committed
-    delete_stops   — called by transition() on BACK to setup/destination
-    save_commit    — explicit flush for a mutated commit row
+    create_trip              — new wizard session + 7 TripStageCommit rows
+    load_trip                — full eager load (required before calling transition())
+    list_trips               — lightweight list for the trips index route
+    create_stops             — called by transition() after the city commit
+    delete_stops             — called by transition() on BACK to setup/country/city
+    create_intercity_commit  — called by transition() when >1 city is committed
+    delete_intercity_commit  — called by transition() when the trip drops to 1 city
+    save_commit              — explicit flush for a mutated commit row
 """
 from __future__ import annotations
 
 import uuid
+from datetime import date
 from typing import Optional
 
 from sqlalchemy import select
@@ -24,19 +27,27 @@ from sqlalchemy.orm import selectinload
 
 from src.db.models import Stop, StopStageCommit, Trip, TripStageCommit
 from src.state.enums import CommitType, StopLevelStage, TripLevelStage
-from src.state.schemas import Destination
+from src.state.schemas import City
 
 
 # ── create_trip ───────────────────────────────────────────────────────────────
 
 async def create_trip(user_id: uuid.UUID, db: AsyncSession) -> Trip:
     """
-    Insert a new Trip and its four TripStageCommit rows (all unvisited).
+    Insert a new Trip and its seven TripStageCommit rows (all unvisited).
+
+    Seven, not eight: intercity is deliberately omitted. It only exists once
+    more than one city has been committed, and the city commit creates it then
+    (see create_intercity_commit). Seeding it here would leave every
+    single-city trip carrying a permanently-unvisited row — and unvisited means
+    "never reached", which would be a lie about a stage that was never offered.
+    The sidebar reads commit rows to draw the stage list, so the lie would be
+    visible: a step the user can neither complete nor get rid of.
 
     Trip PKs are generated Python-side (uuid.uuid4), so trip.id is
     available immediately — no flush needed before creating the commits.
 
-    The four commit rows are appended to trip.trip_stage_commits before
+    The commit rows are appended to trip.trip_stage_commits before
     flush, so that relationship is already loaded on the returned object.
 
     trip.stops is never touched here (a new trip has none yet), so it is
@@ -55,6 +66,8 @@ async def create_trip(user_id: uuid.UUID, db: AsyncSession) -> Trip:
     db.add(trip)
 
     for stage in TripLevelStage.ordered():
+        if stage is TripLevelStage.intercity:
+            continue  # created by the city commit, only when there are spokes
         commit = TripStageCommit(
             trip_id=trip.id,
             stage=stage.value,
@@ -121,30 +134,53 @@ async def list_trips(
 
 async def create_stops(
     trip: Trip,
-    destinations: list[Destination],
+    cities: list[City],
+    country: str,
+    departure_date: date,
+    return_date: date,
     db: AsyncSession,
 ) -> None:
     """
-    Create one Stop + four StopStageCommit rows per destination.
+    Create one Stop + its StopStageCommit rows per city.
 
-    Called by transition() immediately after the destination commit is
-    written. destinations comes from DestinationCommitData.destinations —
-    an ordered list where index i maps to stop_index i.
+    Called by transition() immediately after the city commit is written.
+    cities comes from CityCommitData.cities — an ordered list where index i
+    maps to stop_index i, and index 0 is the HUB.
+
+    country is passed separately rather than read off each city because there
+    is exactly one country per trip (it was chosen at the country stage). If
+    every City object carried its own copy, two of them could disagree.
+
+    Dates follow the hub-and-spoke model:
+
+        hub (index 0)  — the setup dates. You fly in, you fly out, and you are
+                         based there for the whole trip.
+        spokes (1..N)  — NULL. The user picks each day-trip's dates at the
+                         intercity stage, which has not run yet.
+
+    NULL is the honest value here: "not chosen yet", not "same as the trip".
+    The previous design had no per-stop dates at all and derived them from the
+    trip, which is why every city in a multi-city trip silently shared one date
+    range.
 
     After this function returns:
-        len(trip.stops) == len(destinations)
-        every stop has four commits, all unvisited
+        len(trip.stops) == len(cities)
+        every stop has one activities commit, unvisited
+        stop 0 has dates; stops 1..N do not
 
     Appending to trip.stops and stop.stop_stage_commits via the ORM
     relationship is sufficient — SQLAlchemy adds objects to the session
     automatically on collection append.
     """
-    for stop_index, dest in enumerate(destinations):
+    for stop_index, c in enumerate(cities):
+        is_hub = stop_index == 0
         stop = Stop(
             trip_id=trip.id,
             stop_index=stop_index,
-            city=dest.city,
-            country=dest.country,
+            city=c.city,
+            country=country,
+            start_date=departure_date if is_hub else None,
+            end_date=return_date if is_hub else None,
         )
         trip.stops.append(stop)   # registers stop in session via relationship
 
@@ -153,53 +189,3 @@ async def create_stops(
                 stop_id=stop.id,  # uuid4 generated Python-side — available immediately
                 stage=stage.value,
                 commit_type=CommitType.unvisited.value,
-                completed=False,
-            )
-            stop.stop_stage_commits.append(commit)
-
-    await db.flush()
-
-
-# ── delete_stops ──────────────────────────────────────────────────────────────
-
-async def delete_stops(trip: Trip, db: AsyncSession) -> None:
-    """
-    Delete all Stop rows for the trip and clear the in-memory collection.
-
-    StopStageCommit rows are cleaned up automatically: Stop.stop_stage_commits
-    has cascade="all, delete-orphan", so SQLAlchemy deletes child commit rows
-    when their parent stop is deleted.
-
-    Precondition: trip must have been loaded via load_trip() so that all
-    stops and their stop_stage_commits are already in the session. If they
-    are not in session, SQLAlchemy would try to SELECT them before deleting,
-    which would fail in async context with a lazy-load error.
-
-    After this function returns:
-        len(trip.stops) == 0
-        all downstream stop_stage_commits rows are gone from the DB
-    """
-    for stop in list(trip.stops):
-        await db.delete(stop)
-
-    trip.stops.clear()   # keep in-memory state consistent with DB state
-    await db.flush()
-
-
-# ── save_commit ───────────────────────────────────────────────────────────────
-
-async def save_commit(
-    commit: TripStageCommit | StopStageCommit,
-    db: AsyncSession,
-) -> None:
-    """
-    Flush a mutated commit row to the database.
-
-    When commit rows are loaded via load_trip(), SQLAlchemy tracks all
-    attribute mutations automatically — db.add() is a no-op for objects
-    already in the session. This function exists as an explicit escape hatch
-    for code paths that mutate a commit row outside of transition() and need
-    to flush without committing the full session.
-    """
-    db.add(commit)   # no-op if already tracked; ensures new objects are added
-    await db.flush()
