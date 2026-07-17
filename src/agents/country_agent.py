@@ -1,11 +1,8 @@
 from __future__ import annotations
-import json
-import anthropic
 from src.agents.base_agent import BaseAgent
 from src.state.travel_plan import TravelPlan
 from src.state.schemas import Country
 from src.tools.advisory_lookup import advisory_note
-from src.config.settings import settings
 
 
 class CountryAgent(BaseAgent):
@@ -33,10 +30,17 @@ class CountryAgent(BaseAgent):
 
     exclude powers the regenerate button: names already shown are passed back so
     the next batch is different rather than a reshuffle of the same six.
+
+    The fallback pool is a real answer, not a fiction: eight countries that suit
+    most travellers, honestly generic rather than falsely tailored. It exists
+    because a country list is the wizard's first step and an empty one is a dead
+    end. Note what it costs, though — when it fires, the user gets suggestions
+    that ignore everything they typed, and only the WARNING line says so.
+    ask_claude_json's retry exists to keep that path rare: it used to trigger on
+    a mere markdown fence.
     """
 
     name = "country"
-    MODEL = "claude-sonnet-4-6"
     DEFAULT_LIMIT = 6
 
     def __init__(self, exclude: list[str] | None = None, limit: int | None = None):
@@ -93,8 +97,6 @@ class CountryAgent(BaseAgent):
     # ── Claude proposes countries ────────────────────────────────────────
 
     def _propose_countries(self, req) -> list[dict]:
-        client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
-
         system_prompt = """You are a travel destination advisor recommending COUNTRIES.
 
 Return ONLY valid JSON, no markdown, no backticks, no explanation.
@@ -152,15 +154,11 @@ Rules:
             )
         lines.append(f"\nPropose {self.limit} countries that fit.")
 
-        response = client.messages.create(
-            model=self.MODEL,
-            max_tokens=2048,
-            system=system_prompt,
-            messages=[{"role": "user", "content": "\n".join(lines)}],
+        data = self.ask_claude_json(
+            system_prompt=system_prompt,
+            user_message="\n".join(lines),
         )
 
-        raw = response.content[0].text
-        data = json.loads(raw)
         countries = data.get("countries", [])
         if not countries:
             raise ValueError("No countries parsed from response")

@@ -1,10 +1,7 @@
 from __future__ import annotations
-import json
-import anthropic
 from src.agents.base_agent import BaseAgent
 from src.state.travel_plan import TravelPlan
 from src.state.schemas import City
-from src.config.settings import settings
 
 
 class CityAgent(BaseAgent):
@@ -47,14 +44,13 @@ class CityAgent(BaseAgent):
     "cities in $COUNTRY" without the model. A hardcoded map would cover the
     eight countries in CountryAgent's fallback pool and nothing else, and
     inventing city names and climate notes for the rest is precisely what this
-    codebase keeps deciding not to do. One retry for a flaky API call, then
-    raise and let the caller deal with an honest failure.
+    codebase keeps deciding not to do. ask_claude_json retries once for a
+    formatting slip; past that, this raises and the caller gets an honest
+    failure instead of a fiction.
     """
 
     name = "city"
-    MODEL = "claude-sonnet-4-6"
     DEFAULT_LIMIT = 6
-    MAX_ATTEMPTS = 2
 
     def __init__(
         self,
@@ -75,7 +71,8 @@ class CityAgent(BaseAgent):
             # Not recoverable and not the model's fault: the wizard reached the
             # city stage without a committed country, which means the state
             # machine or the adapter is wrong. Fail loudly rather than ask
-            # Claude for cities in "".
+            # Claude for cities in "". The route's own guard should catch this
+            # first and 409; this is the backstop.
             raise ValueError(
                 "CityAgent needs a country in request.destination — the country "
                 "commit is missing or the adapter did not pass it through"
@@ -100,34 +97,6 @@ class CityAgent(BaseAgent):
     # ── Claude proposes cities ───────────────────────────────────────────
 
     def _propose_cities(self, req, country: str) -> list[City]:
-        """
-        Ask Claude, retrying once. Raises if both attempts fail.
-
-        The retry is for the transient half of the failure space — a dropped
-        connection, a 529, a truncated response that won't parse. It is not a
-        fallback: two failures mean we genuinely don't have an answer, and the
-        caller gets an exception rather than a fiction.
-        """
-        last_error: Exception | None = None
-
-        for attempt in range(1, self.MAX_ATTEMPTS + 1):
-            try:
-                return self._call_claude(req, country)
-            except Exception as e:
-                last_error = e
-                if attempt < self.MAX_ATTEMPTS:
-                    self.logger.warning(
-                        f"City proposal attempt {attempt} failed ({e}) — retrying"
-                    )
-
-        raise RuntimeError(
-            f"Could not propose cities in {country} after {self.MAX_ATTEMPTS} "
-            f"attempts: {last_error}"
-        ) from last_error
-
-    def _call_claude(self, req, country: str) -> list[City]:
-        client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
-
         system_prompt = """You are a travel advisor recommending CITIES within one country.
 
 Return ONLY valid JSON, no markdown, no backticks, no explanation.
@@ -198,15 +167,10 @@ Rules:
             )
         lines.append(f"\nPropose {self.limit} cities in {country} that fit.")
 
-        response = client.messages.create(
-            model=self.MODEL,
-            max_tokens=2048,
-            system=system_prompt,
-            messages=[{"role": "user", "content": "\n".join(lines)}],
+        data = self.ask_claude_json(
+            system_prompt=system_prompt,
+            user_message="\n".join(lines),
         )
-
-        raw = response.content[0].text
-        data = json.loads(raw)
 
         cities: list[City] = []
         for item in data.get("cities", []):
