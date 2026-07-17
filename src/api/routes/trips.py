@@ -20,6 +20,7 @@ from datetime import datetime
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -28,7 +29,11 @@ from src.db.base import get_db
 from src.db.models import StopStageCommit, Trip, TripStageCommit, User
 from src.db.trip_repository import create_trip, list_trips, load_trip
 from src.state.enums import StopLevelStage, TripLevelStage
-from src.state.transition import TransitionAction, transition
+from src.state.transition import (
+    CommitValidationError,
+    TransitionAction,
+    transition,
+)
 
 router = APIRouter(prefix="/trips", tags=["trips"])
 
@@ -51,7 +56,7 @@ class CommitResponse(BaseModel):
 
 
 class StopResponse(BaseModel):
-    """One city stop with its four stage commits in stage order."""
+    """One city stop with its stage commits in stage order."""
     stop_index: int
     city: str
     country: str
@@ -173,8 +178,11 @@ async def create_trip_route(
     db: AsyncSession = Depends(get_db),
 ) -> TripDetailResponse:
     """
-    Create a Trip with four TripStageCommit rows (all unvisited).
-    The wizard cursor starts at the setup stage.
+    Create a Trip with one TripStageCommit row per trip-level stage, all
+    unvisited. The wizard cursor starts at the setup stage.
+
+    "Four" was the old multi-city model; hub-and-spoke has eight trip-level
+    stages, and intercity only gets a row once a second city is committed.
     """
     trip = await create_trip(current_user.id, db)
     return _trip_detail(trip)
@@ -215,8 +223,8 @@ async def get_trip_route(
     """
     Return the complete wizard state:
         - current position (current_stage + current_stop_index)
-        - all four trip-level commits in stage order
-        - all stops with their four stage commits each
+        - every trip-level commit in stage order
+        - every stop with its stage commits (activities only, under hub-and-spoke)
 
     The frontend calls this after every transition to re-render the wizard.
     """
@@ -252,16 +260,34 @@ async def transition_route(
 
         { "action": "FORWARD" }
 
-        { "action": "BACK", "target_stage": "destination",
+        { "action": "BACK", "target_stage": "country",
           "target_stop_index": null }
 
-        { "action": "BACK", "target_stage": "flights",
+        { "action": "BACK", "target_stage": "activities",
           "target_stop_index": 1 }
 
     The full trip is loaded before transition() is called — transition()
     requires all relationships to be in the session.
     After transition() flushes, the session is committed by get_db().
+
+    A COMMIT whose payload doesn't match the current stage's schema returns 422
+    with the offending fields. transition() validates against _COMMIT_SCHEMAS
+    before it writes, so a rejected commit changes nothing — the trip is exactly
+    as it was, and the user can fix the payload and try again.
+
+    Only CommitValidationError becomes a 422. Other ValueErrors from
+    transition() — a missing commit row, a stop that should exist and doesn't —
+    are internal inconsistencies, not user input, and are left to surface as
+    500s with a traceback. Catching ValueError here would merge the two, and
+    since pydantic's ValidationError is itself a ValueError, it would report our
+    bugs to the user as their mistake.
     """
     trip = await _owned_trip(trip_id, current_user, db)
-    await transition(trip, action, db)
+    try:
+        await transition(trip, action, db)
+    except CommitValidationError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=jsonable_encoder({"message": e.message, "errors": e.errors}),
+        ) from e
     return _trip_detail(trip)

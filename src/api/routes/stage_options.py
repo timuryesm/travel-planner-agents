@@ -8,6 +8,7 @@ committed context and returns a list of options shaped for that stage's
 frontend commit payload:
 
     country       → [Country]
+    city          → [City]
     flights       → [FlightOption]
     accommodation → [HotelOption]
     activities    → [Activity]
@@ -61,6 +62,10 @@ class StageOptionsResponse(BaseModel):
     city: Optional[str]
     options: list[dict[str, Any]]
 
+
+# Stages needing a committed country. City discovery is scoped to one country —
+# the whole point of the country stage is that this question has an answer.
+_COUNTRY_STAGES = {"city"}
 
 # Stages needing the hub city — the city flown into, where the hotel is.
 # Both are trip-level under hub-and-spoke: one flight, one hotel, per trip.
@@ -145,6 +150,16 @@ def _build_context(
         ctx.country = CountryCommitData.model_validate(
             country_commit.commit_data
         ).country.name
+
+    if stage in _COUNTRY_STAGES and not ctx.country:
+        # Same reasoning as the hub guard below: CityAgent would raise on an
+        # empty country and safe_run would flatten that into 200 with an empty
+        # list, which reads to the user as "no cities here" rather than "you
+        # skipped a step".
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"A country must be chosen before requesting '{stage}' options.",
+        )
 
     # The hub is stops[0]; it exists once the city stage is committed.
     hub = next((s for s in trip.stops if s.stop_index == 0), None)

@@ -23,7 +23,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Annotated, Any, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError, model_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.db.models import Stop, StopStageCommit, Trip, TripStageCommit
@@ -33,7 +33,7 @@ from src.db.trip_repository import (
     delete_intercity_commit,
     delete_stops,
 )
-from src.state.enums import CommitType, TripLevelStage, TripStatus
+from src.state.enums import CommitType, StopLevelStage, TripLevelStage, TripStatus
 from src.state.position import (
     Position,
     flattened_sequence,
@@ -41,8 +41,13 @@ from src.state.position import (
     positions_after,
 )
 from src.state.schemas import (
+    AccommodationCommitData,
+    ActivitiesCommitData,
     CityCommitData,
     CountryCommitData,
+    DailyPlanCommitData,
+    FinalCommitData,
+    FlightsCommitData,
     IntercityCommitData,
     IntercitySegment,
     SetupCommitData,
@@ -62,6 +67,58 @@ _STOP_DEFINING_STAGES = {
 }
 
 
+class CommitValidationError(ValueError):
+    """
+    The payload the user sent is not valid for the stage they are on.
+
+    A distinct type, and NOT plain ValueError, because the route has to tell
+    two things apart that both surface as ValueError:
+
+      - the user sent nonsense           → 422, their problem, fixable by them
+      - _find_trip_commit found no row   → 500, our problem, a bug
+
+    Pydantic's own ValidationError is a subclass of ValueError, so `except
+    ValueError` in the route would sweep up internal-consistency failures and
+    report them to the user as bad input. Wrapping the pydantic error in this
+    type keeps the two populations separate.
+
+    `errors` carries pydantic's per-field list when there is one, so the route
+    can hand the frontend "departure_date: Field required" rather than a wall
+    of text.
+    """
+
+    def __init__(self, message: str, errors: list[dict[str, Any]] | None = None):
+        super().__init__(message)
+        self.message = message
+        self.errors = errors or []
+
+
+# Stage → the schema its commit_data must satisfy.
+#
+# This is the mapping schemas.py's docstring already promised ("validation
+# happens here at the application boundary, on read and write") but that nobody
+# had written down. Without it, validation on write happened only where a
+# structural hook needed the parsed object anyway — city and intercity — and
+# the other seven stages persisted whatever JSON arrived. Swagger's
+# `{"additionalProp1": {}}` placeholder committed cleanly as a setup payload
+# and then 500'd every options call on that trip, four stages downstream from
+# the mistake.
+#
+# One entry per stage that carries data. Adding a stage without adding it here
+# raises at commit time rather than failing silently — see _validate_commit_data.
+_COMMIT_SCHEMAS: dict[str, type[BaseModel]] = {
+    TripLevelStage.setup.value: SetupCommitData,
+    TripLevelStage.country.value: CountryCommitData,
+    TripLevelStage.city.value: CityCommitData,
+    TripLevelStage.flights.value: FlightsCommitData,
+    TripLevelStage.intercity.value: IntercityCommitData,
+    TripLevelStage.accommodation.value: AccommodationCommitData,
+    TripLevelStage.daily_plan.value: DailyPlanCommitData,
+    TripLevelStage.final.value: FinalCommitData,
+    StopLevelStage.activities.value: ActivitiesCommitData,
+}
+
+
 # ── Action models ─────────────────────────────────────────────────────────────
 #
 # Pydantic v2 discriminated union on the "action" literal field.
@@ -73,15 +130,42 @@ class CommitAction(BaseModel):
     """
     User chose or self-provided a value for the current stage.
 
-    commit_type must be "chosen" or "self_provided".
-    data is the stage-specific payload, pre-validated by the caller using
-    the appropriate *CommitData schema from src.state.schemas.
-    self_provided_text is populated only when commit_type == "self_provided".
+    commit_type must be "chosen" or "self_provided" — the other two CommitType
+    values describe how a stage ENDED UP, not something a user can do. SKIP
+    produces `skipped`; `unvisited` is the initial state. Committing with
+    either would set completed=True on a row claiming to be incomplete, and the
+    completed flag is exactly what distinguishes a deliberate skip from a gap.
+
+    data is the stage-specific payload. It is validated against the schema for
+    the CURRENT STAGE inside transition() — this model cannot do it, because
+    the request body does not say which stage it is for and the answer lives on
+    the trip. Everything that can be checked without that knowledge is checked
+    here, so it surfaces as FastAPI's own 422 with no route code involved.
+
+    self_provided_text carries the user's own words ("I've booked AC061") and
+    is required for a self_provided commit: without it the commit is empty and
+    still claims to be complete.
     """
     action: Literal["COMMIT"] = "COMMIT"
     commit_type: CommitType
     data: dict[str, Any]
     self_provided_text: Optional[str] = None
+
+    @model_validator(mode="after")
+    def _check_commit_type(self) -> "CommitAction":
+        if self.commit_type not in (CommitType.chosen, CommitType.self_provided):
+            raise ValueError(
+                f"commit_type must be 'chosen' or 'self_provided' for a COMMIT, "
+                f"not '{self.commit_type.value}'. Use SKIP to skip a stage."
+            )
+        if self.commit_type is CommitType.self_provided and not (
+            self.self_provided_text or ""
+        ).strip():
+            raise ValueError(
+                "self_provided_text is required when commit_type is "
+                "'self_provided' — it is the whole content of the commit."
+            )
+        return self
 
 
 class SkipAction(BaseModel):
@@ -143,9 +227,22 @@ async def transition(
     current = Position(stage=trip.current_stage, stop_index=trip.current_stop_index)
 
     if isinstance(action, CommitAction):
+        # Validate BEFORE touching anything. The old order assigned
+        # commit_data first and let _apply_city_commit validate afterwards,
+        # which meant a bad payload had already been written to the row by the
+        # time it was rejected — and for the seven stages with no structural
+        # hook, it was never rejected at all.
+        validated = _validate_commit_data(current.stage, action)
+
         commit = _get_commit(trip, current)
         commit.commit_type = action.commit_type.value
-        commit.commit_data = action.data
+        # Store the round-tripped model, not the raw dict: dates become ISO
+        # strings, defaults are filled in, and unknown keys are dropped. What
+        # lands in JSONB is then exactly what a later model_validate will read
+        # back, rather than whatever shape the client happened to send.
+        commit.commit_data = (
+            validated.model_dump(mode="json") if validated is not None else action.data
+        )
         commit.self_provided_text = action.self_provided_text
         commit.completed = True
 
@@ -153,15 +250,15 @@ async def transition(
         # whether this is a multi-city trip, and whether the intercity stage
         # exists at all. Delete any prior stops, then create new ones. The
         # sequence must be rebuilt afterward because its length changed.
-        if current.stage == TripLevelStage.city.value:
-            await _apply_city_commit(trip, action.data, db)
+        if current.stage == TripLevelStage.city.value and validated is not None:
+            await _apply_city_commit(trip, validated, db)  # type: ignore[arg-type]
             sequence = flattened_sequence(len(trip.stops))
 
         # Intercity commit: mirror each spoke's chosen dates onto its Stop row,
         # so the activities agent and the assembler can read dates from the stop
         # rather than reaching across into another stage's commit payload.
-        elif current.stage == TripLevelStage.intercity.value:
-            _apply_intercity_commit(trip, action.data)
+        elif current.stage == TripLevelStage.intercity.value and validated is not None:
+            _apply_intercity_commit(trip, validated)  # type: ignore[arg-type]
 
         # Final commit: the assembled plan has been accepted. Status flips here,
         # not on arrival at the stage — entering `final` only means the user is
@@ -197,10 +294,49 @@ async def transition(
     await db.flush()
 
 
+# ── Commit payload validation ─────────────────────────────────────────────────
+
+def _validate_commit_data(stage: str, action: CommitAction) -> Optional[BaseModel]:
+    """
+    Check the payload against the schema for `stage`. Returns the parsed model,
+    or None when there is nothing to parse.
+
+    None for a self_provided commit: its content is self_provided_text, and
+    `data` is {} by design. Validating {} against SetupCommitData would reject
+    a perfectly legitimate "I've booked it myself".
+
+    Raises CommitValidationError for a chosen commit whose data doesn't fit —
+    which the route turns into a 422 with the per-field list. It is the user's
+    input that is wrong, and they can see exactly which part.
+
+    A stage missing from _COMMIT_SCHEMAS raises too, deliberately loudly: a new
+    stage that nobody registered would otherwise inherit exactly the silent
+    pass-through this function exists to remove.
+    """
+    if action.commit_type is CommitType.self_provided:
+        return None
+
+    schema = _COMMIT_SCHEMAS.get(stage)
+    if schema is None:
+        raise ValueError(
+            f"No commit schema registered for stage '{stage}'. Add it to "
+            f"_COMMIT_SCHEMAS in transition.py — every stage that carries data "
+            f"must declare what that data is."
+        )
+
+    try:
+        return schema.model_validate(action.data)
+    except ValidationError as e:
+        raise CommitValidationError(
+            f"Invalid commit payload for stage '{stage}'.",
+            errors=e.errors(include_url=False),
+        ) from e
+
+
 # ── Structural commit handlers ────────────────────────────────────────────────
 
 async def _apply_city_commit(
-    trip: Trip, data: dict[str, Any], db: AsyncSession
+    trip: Trip, city_data: CityCommitData, db: AsyncSession
 ) -> None:
     """
     Rebuild the stop block from a city commit.
@@ -218,8 +354,12 @@ async def _apply_city_commit(
     intercity position below two stops independently, so the sequence and the
     commit rows stay in agreement by both deriving from the same city count
     rather than by consulting each other.
+
+    Takes the parsed CityCommitData rather than the raw dict: transition()
+    validates every payload against _COMMIT_SCHEMAS before calling this, so
+    re-validating here would parse the same JSON twice and imply this hook is
+    the thing standing between bad input and the database. It isn't, any more.
     """
-    city_data = CityCommitData.model_validate(data)
     setup = _committed_setup(trip)
     country = _committed_country(trip)
 
@@ -241,19 +381,20 @@ async def _apply_city_commit(
         await delete_intercity_commit(trip, db)
 
 
-def _apply_intercity_commit(trip: Trip, data: dict[str, Any]) -> None:
+def _apply_intercity_commit(trip: Trip, intercity_data: IntercityCommitData) -> None:
     """
     Write each spoke's chosen dates onto its Stop row.
 
     The hub's dates were set at stop creation from the setup commit and are not
     touched — you are based there for the whole trip.
 
-    Validation is here rather than in the Pydantic schema because it needs the
-    trip window, which lives in a different commit. A day-trip that leaves
-    before you land, or is still away on the morning your flight home departs,
-    is not a scheduling nuance — it is a plan that cannot happen.
+    Shape validation happens in transition() against _COMMIT_SCHEMAS, so this
+    receives a parsed model. What stays here is the validation Pydantic cannot
+    do: _validate_segments needs the trip window, which lives in a different
+    commit. A day-trip that leaves before you land, or is still away on the
+    morning your flight home departs, is not a scheduling nuance — it is a plan
+    that cannot happen.
     """
-    intercity_data = IntercityCommitData.model_validate(data)
     setup = _committed_setup(trip)
     _validate_segments(trip, intercity_data.segments, setup)
 
@@ -268,34 +409,40 @@ def _apply_intercity_commit(trip: Trip, data: dict[str, Any]) -> None:
 def _validate_segments(
     trip: Trip, segments: list[IntercitySegment], setup: SetupCommitData
 ) -> None:
-    """Reject segments that name a stop that isn't there, or dates that can't happen."""
+    """
+    Reject segments that name a stop that isn't there, or dates that can't happen.
+
+    CommitValidationError, not ValueError: every failure here is the user's
+    payload disagreeing with their own trip window, so it belongs in the 422
+    population rather than the 500 one.
+    """
     valid_indexes = {s.stop_index for s in trip.stops if s.stop_index > 0}
     seen: set[int] = set()
 
     for seg in segments:
         if seg.stop_index not in valid_indexes:
-            raise ValueError(
+            raise CommitValidationError(
                 f"Intercity segment names stop_index {seg.stop_index}, which is "
                 f"not a spoke on this trip (spokes: {sorted(valid_indexes)})."
             )
         if seg.stop_index in seen:
-            raise ValueError(
+            raise CommitValidationError(
                 f"Intercity segments contain stop_index {seg.stop_index} twice."
             )
         seen.add(seg.stop_index)
 
         if seg.travel_date > seg.return_date:
-            raise ValueError(
+            raise CommitValidationError(
                 f"Intercity segment for {seg.city} returns "
                 f"({seg.return_date}) before it departs ({seg.travel_date})."
             )
         if seg.travel_date < setup.departure_date:
-            raise ValueError(
+            raise CommitValidationError(
                 f"Intercity segment for {seg.city} departs {seg.travel_date}, "
                 f"before the trip starts ({setup.departure_date})."
             )
         if seg.return_date >= setup.return_date:
-            raise ValueError(
+            raise CommitValidationError(
                 f"Intercity segment for {seg.city} returns {seg.return_date}, "
                 f"on or after the flight home ({setup.return_date})."
             )
