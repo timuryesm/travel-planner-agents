@@ -22,6 +22,20 @@ class TravelRequest(BaseModel):
     accommodation_providers: list[str] = Field(default_factory=lambda: ["booking.com"])
     # Options: ["booking.com"], ["airbnb"], ["booking.com", "airbnb"]
 
+     # ── Wizard signals ────────────────────────────────────────────────────────
+    # These three are what the suggestion agents actually reason over, alongside
+    # dates and budget. They have defaults so the Phase A CLI can ignore them.
+    #
+    # They exist as fields because the alternative was worse: the adapter used
+    # to fold travel_type and preferences_text into `interests` by splitting the
+    # free text on whitespace, which produced interest lists like
+    # "adventure, Visit, all, popular, places, and, restaurants". Articles and
+    # conjunctions were being sent to Claude as travel interests, and with_kids
+    # was not being sent at all.
+    with_kids: bool = False
+    travel_style: str = "hybrid"          # "relax" | "active" | "hybrid"
+    preferences_text: Optional[str] = None  # verbatim, never tokenised
+
 
 # ── Per-agent result models ──────────────────────────────────────────────────
 

@@ -1,112 +1,153 @@
 from __future__ import annotations
+from dataclasses import dataclass, field
 from datetime import date
-from typing import Any
+from typing import Any, Callable, Optional
 
+from src.state.schemas import SetupCommitData
 from src.state.travel_plan import TravelPlan, TravelRequest
 from src.agents.flight_agent import FlightAgent
 from src.agents.hotel_agent import HotelAgent
 from src.agents.activities_agent import ActivitiesAgent
-from src.agents.destination_agent import DestinationAgent
+from src.agents.country_agent import CountryAgent
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Options adapter
 # ─────────────────────────────────────────────────────────────────────────────
-# The wizard's state is spread across commit rows: the setup commit holds the
-# dates / budget / origin, and each stop holds its own city. The Phase A agents,
-# however, are built around a single-shot TravelPlan whose `request` is a
-# TravelRequest. This adapter constructs a synthetic TravelPlan from the
-# wizard's committed state, runs the appropriate agent via safe_run (so a
-# failure degrades to mock rather than raising), and reads the options back off
-# the plan as plain dicts matching the frontend schemas.
+# The wizard's state is spread across commit rows: setup holds the dates,
+# budget and origin; country holds the country; city holds the ordered city
+# list; each stop holds its own city and dates. The Phase A agents, however,
+# are built around a single-shot TravelPlan whose `request` is a TravelRequest.
+#
+# This adapter constructs a synthetic TravelPlan from the wizard's committed
+# state, runs the appropriate agent via safe_run (so a failure degrades to mock
+# rather than raising), and reads the options back off the plan as plain dicts
+# matching the frontend schemas.
 #
 # One agent instance per call is fine — they're cheap to construct and hold no
-# state between runs.
+# state between runs. Hints like `exclude` are passed to the constructor for
+# that reason.
 #
 # Feature flags are respected implicitly: the flight and hotel agents check
 # SKYSCANNER_ENABLED / AIRBNB_ENABLED internally and fall back to mock when the
 # flags are False, so the adapter simply gets whatever the agent decided.
 
 
-def _synthetic_request(setup: dict[str, Any], city: str) -> TravelRequest:
+@dataclass
+class OptionsContext:
     """
-    Build a TravelRequest from the committed setup payload plus a target city.
+    Everything a fetcher might need, assembled once by the route.
 
-    setup is the SetupCommitData dict:
-      origin, departure_date, return_date, num_travelers, travel_type,
-      budget_amount, budget_currency, with_kids, preferences_text, multi_city
+    Every fetcher takes this and returns a list of dicts. A uniform signature
+    is what lets the route dispatch through a plain dict lookup instead of a
+    branch per stage — which matters now that the six stages need six different
+    subsets of the trip's state. Under the old design there were two shapes
+    ("needs a city" / "doesn't"), and the route could get away with an if.
+
+    Deliberately ORM-free: the route reads the Trip and passes plain values, so
+    the adapter and the agents never see a SQLAlchemy object and stay testable
+    without a database.
+
+    hub_city is stops[0].city — the city flown into, where the hotel is, and
+    where every day-trip starts and ends. Both flights and accommodation are
+    about the hub and nothing else.
     """
+    setup: SetupCommitData
+    country: Optional[str] = None
+    hub_city: Optional[str] = None
+
+    # Stop-level stages (activities) target one city and its dates.
+    target_city: Optional[str] = None
+    target_start_date: Optional[date] = None
+    target_end_date: Optional[date] = None
+
+    # Hints from the request body.
+    exclude: list[str] = field(default_factory=list)
+    preference_text: Optional[str] = None
+    limit: Optional[int] = None
+
+
+def _synthetic_request(ctx: OptionsContext, destination: str) -> TravelRequest:
+    """
+    Build a TravelRequest from the committed setup payload plus a destination.
+
+    travel_style, with_kids and preferences_text are passed through as
+    themselves. They used to be folded into `interests` — with_kids silently
+    dropped and preferences_text split on whitespace, so a sentence like
+    "Visit all popular places and restaurants" reached Claude as the interests
+    ["Visit", "all", "popular", "places", "and", "restaurants"]. The signals the
+    agent is supposed to reason over were being destroyed on the way in.
+    """
+    setup = ctx.setup
     return TravelRequest(
-        origin=setup.get("origin", ""),
-        destination=city,
-        departure_date=date.fromisoformat(setup["departure_date"]),
-        return_date=date.fromisoformat(setup["return_date"]),
-        budget_usd=float(setup.get("budget_amount") or 0) or 3000.0,
-        travelers=int(setup.get("num_travelers", 1)),
-        interests=_interests_from_setup(setup),
+        origin=setup.origin,
+        destination=destination,
+        departure_date=setup.departure_date,
+        return_date=setup.return_date,
+        budget_usd=float(setup.budget_amount or 0) or 3000.0,
+        travelers=setup.num_travelers,
         trip_type="roundtrip",
+        with_kids=setup.with_kids,
+        travel_style=setup.travel_type,
+        preferences_text=setup.preferences_text,
     )
-
-
-def _interests_from_setup(setup: dict[str, Any]) -> list[str]:
-    """Derive interest tags from travel_type + free-text preferences."""
-    interests: list[str] = []
-    tt = setup.get("travel_type")
-    if tt == "relax":
-        interests.append("relaxation")
-    elif tt == "active":
-        interests.append("adventure")
-    prefs = (setup.get("preferences_text") or "").strip()
-    if prefs:
-        # Split loose comma/space-separated interests
-        interests.extend(
-            p.strip() for p in prefs.replace(",", " ").split() if p.strip()
-        )
-    return interests
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Per-stage option fetchers
 # ─────────────────────────────────────────────────────────────────────────────
-# Each returns a list of plain dicts already shaped for the matching frontend
-# *CommitData payload. The route serialises these straight to JSON.
+# Each takes an OptionsContext and returns a list of plain dicts already shaped
+# for the matching frontend *CommitData payload. The route serialises these
+# straight to JSON.
 
 
-def destination_options(setup: dict[str, Any]) -> list[dict]:
-    """Run the destination-discovery agent. City is not yet known here."""
+def country_options(ctx: OptionsContext) -> list[dict]:
+    """Run the country-discovery agent. No city is known at this point."""
     # A placeholder destination keeps TravelRequest valid; the agent ignores it.
-    req = _synthetic_request(setup, city="")
+    req = _synthetic_request(ctx, destination="")
     plan = TravelPlan(request=req)
-    plan = DestinationAgent().safe_run(plan)
-    return [d.model_dump() for d in (plan.proposed_destinations or [])]
+    plan = CountryAgent(exclude=ctx.exclude, limit=ctx.limit).safe_run(plan)
+    return [c.model_dump() for c in (plan.proposed_countries or [])]
 
 
-def flight_options(setup: dict[str, Any], city: str) -> list[dict]:
-    req = _synthetic_request(setup, city)
+def flight_options(ctx: OptionsContext) -> list[dict]:
+    """
+    One roundtrip, origin to hub and back.
+
+    Not per-city: spoke cities are reached from the hub, which is the intercity
+    stage's business.
+    """
+    req = _synthetic_request(ctx, destination=ctx.hub_city or "")
     plan = TravelPlan(request=req)
     plan = FlightAgent().safe_run(plan)
     return [f.model_dump() for f in (plan.flight_options or [])]
 
 
-def accommodation_options(setup: dict[str, Any], city: str) -> list[dict]:
-    req = _synthetic_request(setup, city)
+def accommodation_options(ctx: OptionsContext) -> list[dict]:
+    """One stay, in the hub city, for the whole period."""
+    req = _synthetic_request(ctx, destination=ctx.hub_city or "")
     plan = TravelPlan(request=req)
     plan = HotelAgent().safe_run(plan)
     return [h.model_dump() for h in (plan.hotel_options or [])]
 
 
-def activities_options(setup: dict[str, Any], city: str) -> list[dict]:
-    req = _synthetic_request(setup, city)
+def activities_options(ctx: OptionsContext) -> list[dict]:
+    """Things to do in one city — the only stage that repeats per stop."""
+    req = _synthetic_request(ctx, destination=ctx.target_city or "")
     plan = TravelPlan(request=req)
     plan = ActivitiesAgent().safe_run(plan)
     return [a.model_dump() for a in (plan.activities or [])]
 
 
 # ── Dispatch table ────────────────────────────────────────────────────────────
-# Maps a stage name to its fetcher. destination takes no city; the others do.
+# Maps a stage name to its fetcher. Uniform signature: (OptionsContext) -> list.
+#
+# Not every wizard stage is here. setup and daily_plan propose nothing; final
+# has its own endpoint because it returns one assembled object rather than a
+# list of options. city and intercity land in later steps.
 
-STAGE_FETCHERS = {
-    "destination": destination_options,
+STAGE_FETCHERS: dict[str, Callable[[OptionsContext], list[dict]]] = {
+    "country": country_options,
     "flights": flight_options,
     "accommodation": accommodation_options,
     "activities": activities_options,
