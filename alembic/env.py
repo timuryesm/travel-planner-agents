@@ -10,6 +10,12 @@ Requirements:
 """
 from __future__ import annotations
 
+# Must run before any project import — src/db/base.py reads DATABASE_URL at
+# module import time with no default. main.py calls this before its own src
+# imports; env.py needs its own because the alembic CLI imports this file cold.
+from dotenv import load_dotenv
+load_dotenv()
+
 import os
 from logging.config import fileConfig
 
