@@ -31,7 +31,7 @@ from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.agents.options_adapter import STAGE_FETCHERS, OptionsContext
+from src.agents.options_adapter import STAGE_FETCHERS, AgentFailed, OptionsContext
 from src.auth.jwt import get_current_user
 from src.db.base import get_db
 from src.db.models import Trip, User
@@ -102,7 +102,18 @@ async def get_stage_options(
         )
 
     ctx = _build_context(trip, stage, body)
-    options = await run_in_threadpool(fetcher, ctx)
+    try:
+        options = await run_in_threadpool(fetcher, ctx)
+    except AgentFailed as e:
+        # Discovery agents (country, city) raise rather than degrade: there is
+        # no honest fallback for "which countries suit you", and an empty list
+        # would read as an answer. 502 rather than 500 — the failure is
+        # upstream (Claude, the advisory feed), not in this service, and the
+        # component's retry is a reasonable response to it.
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Could not generate options for '{stage}'. Please try again.",
+        ) from e
 
     return StageOptionsResponse(
         stage=stage,

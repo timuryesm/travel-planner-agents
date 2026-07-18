@@ -1,7 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Any, Callable, Optional
+from typing import Callable, Optional
 
 from src.state.schemas import SetupCommitData
 from src.state.travel_plan import TravelPlan, TravelRequest
@@ -21,9 +21,8 @@ from src.agents.city_agent import CityAgent
 # are built around a single-shot TravelPlan whose `request` is a TravelRequest.
 #
 # This adapter constructs a synthetic TravelPlan from the wizard's committed
-# state, runs the appropriate agent via safe_run (so a failure degrades to mock
-# rather than raising), and reads the options back off the plan as plain dicts
-# matching the frontend schemas.
+# state, runs the appropriate agent via safe_run, and reads the options back
+# off the plan as plain dicts matching the frontend schemas.
 #
 # One agent instance per call is fine — they're cheap to construct and hold no
 # state between runs. Hints like `exclude` are passed to the constructor for
@@ -32,15 +31,15 @@ from src.agents.city_agent import CityAgent
 # Feature flags are respected implicitly: the flight and hotel agents check
 # SKYSCANNER_ENABLED / AIRBNB_ENABLED internally and fall back to mock when the
 # flags are False, so the adapter simply gets whatever the agent decided.
-#
-# NOTE on safe_run and empty lists: safe_run catches everything, so a crashed
-# agent returns a plan with its result field still None and the fetcher answers
-# []. The route then serves 200 with no options, which is indistinguishable
-# from "found nothing" at the browser. base_agent.safe_run now logs the
-# traceback, so the failure is visible in the uvicorn log — read the log, not
-# the response, when an options list comes back empty. plan.errors carries the
-# message if we ever want the route to 5xx instead; see the discovery-agent
-# note on city_options.
+
+
+class AgentFailed(RuntimeError):
+    """
+    A discovery agent failed and there is no honest answer to serve.
+
+    The route turns this into a 502. See _discovery_result for why only the
+    discovery stages raise it.
+    """
 
 
 @dataclass
@@ -50,9 +49,9 @@ class OptionsContext:
 
     Every fetcher takes this and returns a list of dicts. A uniform signature
     is what lets the route dispatch through a plain dict lookup instead of a
-    branch per stage — which matters now that the six stages need six different
-    subsets of the trip's state. Under the old design there were two shapes
-    ("needs a city" / "doesn't"), and the route could get away with an if.
+    branch per stage — which matters now that the stages need different subsets
+    of the trip's state. Under the old design there were two shapes ("needs a
+    city" / "doesn't"), and the route could get away with an if.
 
     Deliberately ORM-free: the route reads the Trip and passes plain values, so
     the adapter and the agents never see a SQLAlchemy object and stay testable
@@ -113,6 +112,36 @@ def _synthetic_request(ctx: OptionsContext, destination: str) -> TravelRequest:
     )
 
 
+def _discovery_result(plan: TravelPlan, options: list | None, stage: str) -> list[dict]:
+    """
+    Read a discovery agent's results, or raise if it failed.
+
+    safe_run catches everything, so a crashed agent hands back a plan with its
+    result field still None and the fetcher would answer []. The route then
+    serves 200 with no options, and the browser cannot tell "the agent died"
+    from "there is nothing to suggest". That happened three times in one
+    afternoon: an undeclared Pydantic field, a markdown fence, and a missing
+    country — all reported to the user as a cheerful empty list.
+
+    Degrading to [] is right for FLIGHTS and ACCOMMODATION, where the mock
+    fallback is a real answer and losing them shouldn't cost the user the
+    country they already picked. It is wrong for COUNTRY and CITY: there is
+    nothing to degrade to, an empty list is a dead wizard, and the user's only
+    move is a refresh they have no reason to attempt. So these two raise, the
+    route answers 502, and the component can say "couldn't load — retry".
+
+    plan.errors is populated by safe_run's except branch, which is what makes
+    the distinction readable here without changing safe_run's contract.
+    """
+    if plan.errors:
+        raise AgentFailed(f"{stage}: {plan.errors[-1]}")
+    if options is None:
+        # No exception, no results. Shouldn't happen — but returning [] here
+        # would recreate exactly the silence this function exists to remove.
+        raise AgentFailed(f"{stage}: agent completed without producing results")
+    return [o.model_dump() for o in options]
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Per-stage option fetchers
 # ─────────────────────────────────────────────────────────────────────────────
@@ -127,7 +156,7 @@ def country_options(ctx: OptionsContext) -> list[dict]:
     req = _synthetic_request(ctx, destination="")
     plan = TravelPlan(request=req)
     plan = CountryAgent(exclude=ctx.exclude, limit=ctx.limit).safe_run(plan)
-    return [c.model_dump() for c in (plan.proposed_countries or [])]
+    return _discovery_result(plan, plan.proposed_countries, "country")
 
 
 def city_options(ctx: OptionsContext) -> list[dict]:
@@ -138,13 +167,6 @@ def city_options(ctx: OptionsContext) -> list[dict]:
     reasons about. preference_text is the hint the user typed on THIS stage and
     goes to the constructor, not into the request: the request already carries
     the setup preferences, and the two are different questions.
-
-    Unlike CountryAgent, CityAgent has no fabricated fallback — if Claude is
-    unreachable there is no honest way to name cities in an arbitrary country.
-    It retries once and then raises, which safe_run converts into an empty list
-    here. That is a real gap: an empty city list is a dead wizard, not a
-    degraded one. The traceback will be in the uvicorn log (see base_agent), and
-    plan.errors holds the message if we decide the route should 5xx instead.
     """
     req = _synthetic_request(ctx, destination=ctx.country or "")
     plan = TravelPlan(request=req)
@@ -153,7 +175,7 @@ def city_options(ctx: OptionsContext) -> list[dict]:
         limit=ctx.limit,
         preference_text=ctx.preference_text,
     ).safe_run(plan)
-    return [c.model_dump() for c in (plan.proposed_cities or [])]
+    return _discovery_result(plan, plan.proposed_cities, "city")
 
 
 def flight_options(ctx: OptionsContext) -> list[dict]:
@@ -162,6 +184,8 @@ def flight_options(ctx: OptionsContext) -> list[dict]:
 
     Not per-city: spoke cities are reached from the hub, which is the intercity
     stage's business.
+
+    Degrades to [] on failure rather than raising — see _discovery_result.
     """
     req = _synthetic_request(ctx, destination=ctx.hub_city or "")
     plan = TravelPlan(request=req)
