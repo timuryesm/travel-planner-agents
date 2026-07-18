@@ -3,17 +3,14 @@ import { useTranslation } from 'react-i18next'
 import { motion, AnimatePresence } from 'framer-motion'
 import useTripStore from '../../store/tripStore'
 
-// Stage components — implemented in Step 12.
-// Until then a shared placeholder stands in for each, so the renderer, the
-// store, and the transition wiring can be tested end-to-end first.
 import {
   SetupStage,
-  DestinationStage,
+  CountryStage,
+  CityStage,
   FlightsStage,
   AccommodationStage,
   ActivitiesStage,
   DailyPlanStage,
-  ReconciliationStage,
   FinalStage,
 } from './stages'
 
@@ -39,31 +36,44 @@ import {
 
 const STAGE_COMPONENTS = {
   setup: SetupStage,
-  destination: DestinationStage,
+  country: CountryStage,
+  city: CityStage,
   flights: FlightsStage,
   accommodation: AccommodationStage,
   activities: ActivitiesStage,
   daily_plan: DailyPlanStage,
-  reconciliation: ReconciliationStage,
   final: FinalStage,
+  // intercity: IntercityStage — Track 2, step 18
 }
 
-// Mirrors the backend's flattened_sequence() so we can compare positions
-const PRE = ['setup', 'destination']
-const STOP_STAGES = ['flights', 'accommodation', 'activities', 'daily_plan']
-const POST = ['reconciliation', 'final']
+// Mirrors the backend's flattened_sequence(). Used ONLY to pick the slide
+// direction, so a wrong answer costs an animation, not correctness — but it
+// has to track enums.py or the wizard animates backwards on the way forward.
+//
+// flights / accommodation / daily_plan are trip-level now: one roundtrip, one
+// hotel, one plan per trip. activities is the only stage that repeats.
+const TRIP_PRE = ['setup', 'country', 'city', 'flights', 'intercity', 'accommodation']
+const STOP_STAGES = ['activities']
+const TRIP_POST = ['daily_plan', 'final']
+
+// intercity exists only when there's somewhere to travel to — same condition
+// as flattened_sequence(), derived from the same signal (stop count).
+function preStages(numStops) {
+  return TRIP_PRE.filter((s) => s !== 'intercity' || numStops >= 2)
+}
 
 function sequenceIndex(stage, stopIndex, numStops) {
+  const pre = preStages(numStops)
   if (stopIndex === null) {
-    const pre = PRE.indexOf(stage)
-    if (pre >= 0) return pre
-    const post = POST.indexOf(stage)
-    if (post >= 0) return PRE.length + numStops * STOP_STAGES.length + post
+    const i = pre.indexOf(stage)
+    if (i >= 0) return i
+    const j = TRIP_POST.indexOf(stage)
+    if (j >= 0) return pre.length + numStops * STOP_STAGES.length + j
     return -1
   }
   const s = STOP_STAGES.indexOf(stage)
   if (s < 0) return -1
-  return PRE.length + stopIndex * STOP_STAGES.length + s
+  return pre.length + stopIndex * STOP_STAGES.length + s
 }
 
 export default function WizardRenderer() {

@@ -62,7 +62,14 @@ export class ApiError extends Error {
 // Map an HTTP response to a stable error code the UI can translate.
 function codeForResponse(status, detail) {
   if (status === 401) return 'sessionExpired'
-  if (status === 409) return 'emailTaken'
+  // 409 is NOT emailTaken any more. _build_context returns it for wizard
+  // ordering ("Setup must be completed", "A country must be chosen"), so a
+  // blanket mapping told users their email was taken when they'd skipped a
+  // step. register() remaps its own 409 — the only place it means that.
+  if (status === 409) return 'conflict'
+  // 502 = a discovery agent failed upstream. Distinct from serverError so the
+  // stage can offer Retry rather than implying the app itself is broken.
+  if (status === 502) return 'agentFailed'
   if (status === 400 || status === 422) return 'validation'
   if (status >= 500) return 'serverError'
   // Some auth failures come back as 401 with a specific detail; the login
@@ -132,14 +139,22 @@ async function request(path, { method = 'GET', body, auth = true, form = false }
 // ── Auth endpoints ────────────────────────────────────────────────────────────
 
 // POST /auth/register  → { access_token, token_type, user_id, email }
+// 409 here means the email is taken — the one route where that's true.
 export async function register(email, password) {
-  const data = await request('/auth/register', {
-    method: 'POST',
-    body: { email, password },
-    auth: false,
-  })
-  if (data?.access_token) setToken(data.access_token)
-  return data
+  try {
+    const data = await request('/auth/register', {
+      method: 'POST',
+      body: { email, password },
+      auth: false,
+    })
+    if (data?.access_token) setToken(data.access_token)
+    return data
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 409) {
+      throw new ApiError('emailTaken', 409, err.detail)
+    }
+    throw err
+  }
 }
 
 // POST /auth/login  (form-encoded: username=email, password)
@@ -207,13 +222,21 @@ export async function transition(tripId, action) {
 // Runs the matching Phase A agent for a wizard stage and returns proposed
 // options shaped for that stage's commit payload.
 //
-//   getStageOptions(tripId, 'destination')          → [Destination]
-//   getStageOptions(tripId, 'flights', 0)           → [FlightOption]
-//   getStageOptions(tripId, 'accommodation', 0)     → [HotelOption]
-//   getStageOptions(tripId, 'activities', 1)        → [Activity]
+//   getStageOptions(tripId, 'country')                        → [Country]
+//   getStageOptions(tripId, 'city', null, { preferenceText }) → [City]
+//   getStageOptions(tripId, 'flights')                        → [FlightOption]
+//   getStageOptions(tripId, 'accommodation')                  → [HotelOption]
+//   getStageOptions(tripId, 'activities', 1)                  → [Activity]
 //
-// stopIndex is required for flights / accommodation / activities, omitted for
-// destination. Returns the `options` array from the response.
+// stopIndex is required for activities and omitted everywhere else — under
+// hub-and-spoke, flights and accommodation are trip-level (one roundtrip, one
+// hotel), so activities is the only stage that repeats per city.
+//
+// EVERYTHING GOES IN THE BODY, including stop_index. This used to be a query
+// param (`?stop_index=N`) while StageOptionsRequest read it from the body, so
+// it silently never arrived. Invisible today because only activities uses it;
+// it would have surfaced at step 11 as "400 stop_index is required" looking
+// like a component bug.
 //
 // Caching, and why it isn't optional:
 //   React 18 StrictMode double-invokes effects in dev, so every stage mount
@@ -223,10 +246,13 @@ export async function transition(tripId, action) {
 //   request instead of starting a new one. Once resolved, the cache also means
 //   re-visiting a stage doesn't re-run the agent.
 //
+//   Hints are NOT part of the key. A regenerate or a preference change is a
+//   deliberate "ask again", so it forces instead — the new answer replaces the
+//   cached one under the same key, which is what a user pressing the button
+//   expects. Keying on hints would leave stale results parked under every
+//   phrasing the user ever tried.
+//
 //   Failures are evicted so a transient error isn't cached forever.
-//   Pass { force: true } to deliberately re-run an agent (a "refresh options"
-//   button), and call invalidateStageOptions() when commit state changes make
-//   the cached options stale — see transition() below.
 
 const _optionsCache = new Map() // key → Promise<options[]>
 
@@ -234,16 +260,30 @@ function _optionsKey(tripId, stage, stopIndex) {
   return `${tripId}:${stage}:${stopIndex ?? '-'}`
 }
 
-export function getStageOptions(tripId, stage, stopIndex = null, { force = false } = {}) {
+export function getStageOptions(
+  tripId,
+  stage,
+  stopIndex = null,
+  { force = false, exclude = [], preferenceText = null, limit = null } = {}
+) {
   const key = _optionsKey(tripId, stage, stopIndex)
 
-  if (!force && _optionsCache.has(key)) {
+  // Any hint means the caller is asking a new question — never serve a cached
+  // answer to it.
+  const hasHints = exclude.length > 0 || !!preferenceText || limit !== null
+  if (!force && !hasHints && _optionsCache.has(key)) {
     return _optionsCache.get(key)
   }
 
-  const qs = stopIndex !== null ? `?stop_index=${stopIndex}` : ''
-  const pending = request(`/trips/${tripId}/stages/${stage}/options${qs}`, {
+  const body = {}
+  if (stopIndex !== null) body.stop_index = stopIndex
+  if (exclude.length) body.exclude = exclude
+  if (preferenceText) body.preference_text = preferenceText
+  if (limit !== null) body.limit = limit
+
+  const pending = request(`/trips/${tripId}/stages/${stage}/options`, {
     method: 'POST',
+    body,
   })
     .then((data) => data?.options ?? [])
     .catch((err) => {

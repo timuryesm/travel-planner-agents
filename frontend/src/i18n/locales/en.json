@@ -1,206 +1,206 @@
 {
-    "app": {
-      "name": "Travel Planner",
-      "tagline": "Plan your perfect trip, step by step"
-    },
-    "common": {
-      "next": "Next",
-      "back": "Back",
-      "skip": "Skip",
-      "continue": "Continue",
-      "confirm": "Confirm",
-      "cancel": "Cancel",
-      "save": "Save",
-      "edit": "Edit",
-      "delete": "Delete",
-      "loading": "Loading…",
-      "retry": "Retry",
-      "close": "Close",
-      "optional": "optional",
-      "required": "required",
-      "yes": "Yes",
-      "no": "No"
-    },
-    "theme": {
-      "day": "Day",
-      "night": "Night",
-      "auto": "auto",
-      "switchToDay": "Switch to day",
-      "switchToNight": "Switch to night"
-    },
-    "language": {
-      "label": "Language",
-      "select": "Select language"
-    },
-    "auth": {
-      "loginTitle": "Welcome back",
-      "loginSubtitle": "Sign in to continue planning",
-      "registerTitle": "Create your account",
-      "registerSubtitle": "Start planning your next adventure",
-      "email": "Email",
-      "emailPlaceholder": "you@example.com",
-      "password": "Password",
-      "passwordPlaceholder": "Enter your password",
-      "loginButton": "Sign in",
-      "registerButton": "Create account",
-      "noAccount": "Don't have an account?",
-      "haveAccount": "Already have an account?",
-      "signUpLink": "Sign up",
-      "signInLink": "Sign in",
-      "logout": "Log out",
-      "errors": {
-        "invalidCredentials": "Incorrect email or password.",
-        "emailTaken": "An account with that email already exists.",
-        "emailInvalid": "Please enter a valid email address.",
-        "passwordTooShort": "Password must be at least 8 characters.",
-        "networkError": "Couldn't reach the server. Please try again.",
-        "unknown": "Something went wrong. Please try again."
-      }
-    },
-    "sidebar": {
-      "tripSetup": "Trip setup",
-      "finishingUp": "Finishing up",
-      "yourTrips": "Your trips",
-      "newTrip": "New trip",
-      "stop": "Stop"
-    },
-    "stages": {
-      "setup": "Trip basics",
-      "destination": "Destination",
-      "flights": "Flights",
-      "accommodation": "Stay",
-      "activities": "Activities",
-      "daily_plan": "Daily plan",
-      "reconciliation": "Review",
-      "final": "Your plan"
-    },
-    "stageStatus": {
-      "unvisited": "Not started",
-      "current": "In progress",
-      "completed": "Done",
-      "skipped": "Skipped",
-      "selfProvided": "Your own"
-    },
-    "setup": {
-      "title": "Let's start with the basics",
-      "subtitle": "Tell us about your trip",
-      "origin": "Departing from",
-      "originPlaceholder": "e.g. Toronto",
-      "departureDate": "Departure date",
-      "returnDate": "Return date",
-      "travelers": "Travelers",
-      "travelType": "Trip style",
-      "travelTypeRelax": "Relaxed",
-      "travelTypeActive": "Active",
-      "travelTypeHybrid": "A bit of both",
-      "budget": "Budget",
-      "budgetPlaceholder": "e.g. 3000",
-      "currency": "Currency",
-      "withKids": "Traveling with kids",
-      "multiCity": "Visit multiple cities",
-      "preferences": "Anything else?",
-      "preferencesPlaceholder": "Interests, must-sees, dietary needs…"
-    },
-    "destination": {
-      "title": "Where to?",
-      "subtitle": "Here are some destinations we think you'll love",
-      "whyChosen": "Why we picked this",
-      "seasonNote": "Best time to visit",
-      "safetyNote": "Good to know",
-      "selectThis": "Choose this",
-      "selected": "Selected",
-      "addCity": "Add another city",
-      "moreOptions": "Show more options"
-    },
-    "flights": {
-      "title": "Choose your flight",
-      "subtitle": "Options for {{city}}",
-      "cheapest": "Cheapest",
-      "fastest": "Fastest",
-      "comfortable": "Most comfortable",
-      "outbound": "Outbound",
-      "return": "Return",
-      "duration": "{{hours}}h",
-      "stops_one": "{{count}} stop",
-      "stops_other": "{{count}} stops",
-      "nonstop": "Nonstop",
-      "selectFlight": "Select this flight",
-      "provideOwn": "I've booked my own",
-      "provideOwnPlaceholder": "e.g. Air Canada AC061, $1,180"
-    },
-    "accommodation": {
-      "title": "Where will you stay?",
-      "subtitle": "Places to stay in {{city}}",
-      "perNight": "/ night",
-      "total": "Total",
-      "nights_one": "{{count}} night",
-      "nights_other": "{{count}} nights",
-      "rating": "Rating",
-      "selectStay": "Choose this stay",
-      "provideOwn": "I've booked my own",
-      "provideOwnPlaceholder": "e.g. Marriott Downtown, $180/night"
-    },
-    "activities": {
-      "title": "What would you like to do?",
-      "subtitle": "Activities in {{city}}",
-      "estimatedCost": "Est. cost",
-      "duration": "{{hours}}h",
-      "addActivity": "Add",
-      "removeActivity": "Remove",
-      "selected_one": "{{count}} activity selected",
-      "selected_other": "{{count}} activities selected",
-      "confirmSelection": "Confirm selection",
-      "moreOptions": "Show more"
-    },
-    "dailyPlan": {
-      "title": "Your daily plan",
-      "subtitle": "Day by day in {{city}}",
-      "day": "Day {{number}}",
-      "editPlan": "Edit plan",
-      "editPlaceholder": "Ask for changes, e.g. \"move the museum to the afternoon\"",
-      "applyChanges": "Apply changes",
-      "weatherLabel": "Weather"
-    },
-    "reconciliation": {
-      "title": "Almost there",
-      "subtitle": "A few stages need your attention before we finish",
-      "stageNeedsAttention": "This stage is incomplete",
-      "addNow": "Add it now",
-      "writeOwn": "Write my own",
-      "skipForGood": "Leave it out",
-      "writeOwnPlaceholder": "Describe what you'd like here…",
-      "allComplete": "Everything looks good!",
-      "assemblePlan": "Create my plan"
-    },
-    "final": {
-      "title": "Your trip is ready",
-      "subtitle": "Here's your complete plan",
-      "downloadPlan": "Download plan",
-      "exportCalendar": "Add to Google Calendar",
-      "shareEmail": "Share by email",
-      "totalBudget": "Total budget",
-      "withinBudget": "Within budget",
-      "overBudget": "Over budget by {{amount}}",
-      "startNewTrip": "Plan another trip"
-    },
-    "blastRadius": {
-      "title": "Going back will reset later steps",
-      "description": "Changing this stage clears everything after it. You'll need to redo:",
-      "affectedStages": "Steps that will be reset",
-      "confirmBack": "Yes, go back",
-      "keepEditing": "Never mind"
-    },
-    "budget": {
-      "flights": "Flights",
-      "accommodation": "Accommodation",
-      "activities": "Activities",
-      "miscellaneous": "Miscellaneous",
-      "total": "Total"
-    },
+  "app": {
+    "name": "Travel Planner",
+    "tagline": "Plan your perfect trip, step by step"
+  },
+  "common": {
+    "next": "Next",
+    "back": "Back",
+    "skip": "Skip",
+    "continue": "Continue",
+    "confirm": "Confirm",
+    "cancel": "Cancel",
+    "save": "Save",
+    "edit": "Edit",
+    "delete": "Delete",
+    "loading": "Loading…",
+    "retry": "Retry",
+    "close": "Close",
+    "optional": "optional",
+    "required": "required",
+    "yes": "Yes",
+    "no": "No"
+  },
+  "theme": {
+    "day": "Day",
+    "night": "Night",
+    "auto": "auto",
+    "switchToDay": "Switch to day",
+    "switchToNight": "Switch to night"
+  },
+  "language": {
+    "label": "Language",
+    "select": "Select language"
+  },
+  "auth": {
+    "loginTitle": "Welcome back",
+    "loginSubtitle": "Sign in to continue planning",
+    "registerTitle": "Create your account",
+    "registerSubtitle": "Start planning your next adventure",
+    "email": "Email",
+    "emailPlaceholder": "you@example.com",
+    "password": "Password",
+    "passwordPlaceholder": "Enter your password",
+    "loginButton": "Sign in",
+    "registerButton": "Create account",
+    "noAccount": "Don't have an account?",
+    "haveAccount": "Already have an account?",
+    "signUpLink": "Sign up",
+    "signInLink": "Sign in",
+    "logout": "Log out",
     "errors": {
-      "loadTripFailed": "Couldn't load your trip. Please try again.",
-      "transitionFailed": "Couldn't save that change. Please try again.",
-      "sessionExpired": "Your session has expired. Please sign in again.",
-      "generic": "Something went wrong. Please try again."
+      "invalidCredentials": "Incorrect email or password.",
+      "emailTaken": "An account with that email already exists.",
+      "emailInvalid": "Please enter a valid email address.",
+      "passwordTooShort": "Password must be at least 8 characters.",
+      "networkError": "Couldn't reach the server. Please try again.",
+      "unknown": "Something went wrong. Please try again."
     }
+  },
+  "sidebar": {
+    "tripSetup": "Trip setup",
+    "logistics": "Getting there",
+    "finishingUp": "Finishing up",
+    "yourTrips": "Your trips",
+    "newTrip": "New trip",
+    "stop": "Stop"
+  },
+  "stages": {
+    "setup": "Trip basics",
+    "country": "Country",
+    "city": "City",
+    "flights": "Flights",
+    "accommodation": "Stay",
+    "activities": "Activities",
+    "daily_plan": "Daily plan",
+    "final": "Your plan"
+  },
+  "stageStatus": {
+    "unvisited": "Not started",
+    "current": "In progress",
+    "completed": "Done",
+    "skipped": "Skipped",
+    "selfProvided": "Your own"
+  },
+  "setup": {
+    "title": "Let's start with the basics",
+    "subtitle": "Tell us about your trip",
+    "origin": "Departing from",
+    "originPlaceholder": "e.g. Toronto",
+    "departureDate": "Departure date",
+    "returnDate": "Return date",
+    "travelers": "Travelers",
+    "travelType": "Trip style",
+    "travelTypeRelax": "Relaxed",
+    "travelTypeActive": "Active",
+    "travelTypeHybrid": "A bit of both",
+    "budget": "Budget",
+    "budgetPlaceholder": "e.g. 3000",
+    "currency": "Currency",
+    "withKids": "Traveling with kids",
+    "preferences": "Anything else?",
+    "preferencesPlaceholder": "Interests, must-sees, dietary needs…"
+  },
+  "country": {
+    "title": "Where in the world?",
+    "subtitle": "Pick one country. You'll choose your city next.",
+    "whyChosen": "Why we picked this",
+    "climateNote": "Climate",
+    "safetyNote": "Advisory",
+    "advisorySource": "Advisories from the U.S. State Department, updated live.",
+    "moreOptions": "Show other countries"
+  },
+  "city": {
+    "title": "Pick your base",
+    "subtitle": "Cities in {{country}}. You'll stay here for the whole trip.",
+    "whyChosen": "Why we picked this",
+    "climateNote": "Climate",
+    "preferenceLabel": "Anything specific you're after?",
+    "preferencePlaceholder": "e.g. somewhere coastal, not a megacity",
+    "applyPreference": "Apply",
+    "hubHint": "This is your base for the whole trip — day trips come later.",
+    "addCity": "Add another city",
+    "moreOptions": "Show other cities"
+  },
+  "flights": {
+    "title": "Choose your flight",
+    "subtitle": "Options for {{city}}",
+    "cheapest": "Cheapest",
+    "fastest": "Fastest",
+    "comfortable": "Most comfortable",
+    "outbound": "Outbound",
+    "return": "Return",
+    "duration": "{{hours}}h",
+    "stops_one": "{{count}} stop",
+    "stops_other": "{{count}} stops",
+    "nonstop": "Nonstop",
+    "selectFlight": "Select this flight",
+    "provideOwn": "I've booked my own",
+    "provideOwnPlaceholder": "e.g. Air Canada AC061, $1,180"
+  },
+  "accommodation": {
+    "title": "Where will you stay?",
+    "subtitle": "Places to stay in {{city}}",
+    "perNight": "/ night",
+    "total": "Total",
+    "nights_one": "{{count}} night",
+    "nights_other": "{{count}} nights",
+    "rating": "Rating",
+    "selectStay": "Choose this stay",
+    "provideOwn": "I've booked my own",
+    "provideOwnPlaceholder": "e.g. Marriott Downtown, $180/night"
+  },
+  "activities": {
+    "title": "What would you like to do?",
+    "subtitle": "Activities in {{city}}",
+    "estimatedCost": "Est. cost",
+    "duration": "{{hours}}h",
+    "addActivity": "Add",
+    "removeActivity": "Remove",
+    "selected_one": "{{count}} activity selected",
+    "selected_other": "{{count}} activities selected",
+    "confirmSelection": "Confirm selection",
+    "moreOptions": "Show more"
+  },
+  "dailyPlan": {
+    "title": "Your daily plan",
+    "subtitle": "Day by day in {{city}}",
+    "day": "Day {{number}}",
+    "editPlan": "Edit plan",
+    "editPlaceholder": "Ask for changes, e.g. \"move the museum to the afternoon\"",
+    "applyChanges": "Apply changes",
+    "weatherLabel": "Weather"
+  },
+  "final": {
+    "title": "Your trip is ready",
+    "subtitle": "Here's your complete plan",
+    "downloadPlan": "Download plan",
+    "exportCalendar": "Add to Google Calendar",
+    "shareEmail": "Share by email",
+    "totalBudget": "Total budget",
+    "withinBudget": "Within budget",
+    "overBudget": "Over budget by {{amount}}",
+    "startNewTrip": "Plan another trip"
+  },
+  "blastRadius": {
+    "title": "Going back will reset later steps",
+    "description": "Changing this stage clears everything after it. You'll need to redo:",
+    "affectedStages": "Steps that will be reset",
+    "confirmBack": "Yes, go back",
+    "keepEditing": "Never mind"
+  },
+  "budget": {
+    "flights": "Flights",
+    "accommodation": "Accommodation",
+    "activities": "Activities",
+    "miscellaneous": "Miscellaneous",
+    "total": "Total"
+  },
+  "errors": {
+    "loadTripFailed": "Couldn't load your trip. Please try again.",
+    "transitionFailed": "Couldn't save that change. Please try again.",
+    "optionsFailed": "Couldn't generate suggestions right now.",
+    "sessionExpired": "Your session has expired. Please sign in again.",
+    "generic": "Something went wrong. Please try again."
   }
+}

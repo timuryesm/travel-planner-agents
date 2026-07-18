@@ -1,206 +1,206 @@
 {
-    "app": {
-      "name": "Travel Planner",
-      "tagline": "Planifiez votre voyage idéal, étape par étape"
-    },
-    "common": {
-      "next": "Suivant",
-      "back": "Retour",
-      "skip": "Passer",
-      "continue": "Continuer",
-      "confirm": "Confirmer",
-      "cancel": "Annuler",
-      "save": "Enregistrer",
-      "edit": "Modifier",
-      "delete": "Supprimer",
-      "loading": "Chargement…",
-      "retry": "Réessayer",
-      "close": "Fermer",
-      "optional": "facultatif",
-      "required": "requis",
-      "yes": "Oui",
-      "no": "Non"
-    },
-    "theme": {
-      "day": "Jour",
-      "night": "Nuit",
-      "auto": "auto",
-      "switchToDay": "Passer au mode jour",
-      "switchToNight": "Passer au mode nuit"
-    },
-    "language": {
-      "label": "Langue",
-      "select": "Choisir la langue"
-    },
-    "auth": {
-      "loginTitle": "Bon retour",
-      "loginSubtitle": "Connectez-vous pour continuer",
-      "registerTitle": "Créez votre compte",
-      "registerSubtitle": "Commencez à planifier votre prochaine aventure",
-      "email": "Courriel",
-      "emailPlaceholder": "vous@exemple.com",
-      "password": "Mot de passe",
-      "passwordPlaceholder": "Saisissez votre mot de passe",
-      "loginButton": "Se connecter",
-      "registerButton": "Créer un compte",
-      "noAccount": "Vous n'avez pas de compte ?",
-      "haveAccount": "Vous avez déjà un compte ?",
-      "signUpLink": "S'inscrire",
-      "signInLink": "Se connecter",
-      "logout": "Se déconnecter",
-      "errors": {
-        "invalidCredentials": "Courriel ou mot de passe incorrect.",
-        "emailTaken": "Un compte existe déjà avec ce courriel.",
-        "emailInvalid": "Veuillez saisir une adresse courriel valide.",
-        "passwordTooShort": "Le mot de passe doit comporter au moins 8 caractères.",
-        "networkError": "Impossible de joindre le serveur. Veuillez réessayer.",
-        "unknown": "Une erreur s'est produite. Veuillez réessayer."
-      }
-    },
-    "sidebar": {
-      "tripSetup": "Préparation du voyage",
-      "finishingUp": "Finalisation",
-      "yourTrips": "Vos voyages",
-      "newTrip": "Nouveau voyage",
-      "stop": "Étape"
-    },
-    "stages": {
-      "setup": "Les bases",
-      "destination": "Destination",
-      "flights": "Vols",
-      "accommodation": "Hébergement",
-      "activities": "Activités",
-      "daily_plan": "Programme quotidien",
-      "reconciliation": "Vérification",
-      "final": "Votre plan"
-    },
-    "stageStatus": {
-      "unvisited": "Non commencé",
-      "current": "En cours",
-      "completed": "Terminé",
-      "skipped": "Passé",
-      "selfProvided": "Le vôtre"
-    },
-    "setup": {
-      "title": "Commençons par les bases",
-      "subtitle": "Parlez-nous de votre voyage",
-      "origin": "Départ de",
-      "originPlaceholder": "ex. Toronto",
-      "departureDate": "Date de départ",
-      "returnDate": "Date de retour",
-      "travelers": "Voyageurs",
-      "travelType": "Style de voyage",
-      "travelTypeRelax": "Détente",
-      "travelTypeActive": "Actif",
-      "travelTypeHybrid": "Un peu des deux",
-      "budget": "Budget",
-      "budgetPlaceholder": "ex. 3000",
-      "currency": "Devise",
-      "withKids": "Voyage avec enfants",
-      "multiCity": "Visiter plusieurs villes",
-      "preferences": "Autre chose ?",
-      "preferencesPlaceholder": "Centres d'intérêt, incontournables, régime alimentaire…"
-    },
-    "destination": {
-      "title": "Où allez-vous ?",
-      "subtitle": "Voici quelques destinations qui devraient vous plaire",
-      "whyChosen": "Pourquoi ce choix",
-      "seasonNote": "Meilleure période",
-      "safetyNote": "Bon à savoir",
-      "selectThis": "Choisir",
-      "selected": "Sélectionné",
-      "addCity": "Ajouter une ville",
-      "moreOptions": "Voir plus d'options"
-    },
-    "flights": {
-      "title": "Choisissez votre vol",
-      "subtitle": "Options pour {{city}}",
-      "cheapest": "Le moins cher",
-      "fastest": "Le plus rapide",
-      "comfortable": "Le plus confortable",
-      "outbound": "Aller",
-      "return": "Retour",
-      "duration": "{{hours}} h",
-      "stops_one": "{{count}} escale",
-      "stops_other": "{{count}} escales",
-      "nonstop": "Sans escale",
-      "selectFlight": "Choisir ce vol",
-      "provideOwn": "J'ai réservé moi-même",
-      "provideOwnPlaceholder": "ex. Air Canada AC061, 1 180 $"
-    },
-    "accommodation": {
-      "title": "Où allez-vous loger ?",
-      "subtitle": "Hébergements à {{city}}",
-      "perNight": "/ nuit",
-      "total": "Total",
-      "nights_one": "{{count}} nuit",
-      "nights_other": "{{count}} nuits",
-      "rating": "Note",
-      "selectStay": "Choisir cet hébergement",
-      "provideOwn": "J'ai réservé moi-même",
-      "provideOwnPlaceholder": "ex. Marriott Centre-ville, 180 $/nuit"
-    },
-    "activities": {
-      "title": "Que souhaitez-vous faire ?",
-      "subtitle": "Activités à {{city}}",
-      "estimatedCost": "Coût estimé",
-      "duration": "{{hours}} h",
-      "addActivity": "Ajouter",
-      "removeActivity": "Retirer",
-      "selected_one": "{{count}} activité sélectionnée",
-      "selected_other": "{{count}} activités sélectionnées",
-      "confirmSelection": "Confirmer la sélection",
-      "moreOptions": "Voir plus"
-    },
-    "dailyPlan": {
-      "title": "Votre programme quotidien",
-      "subtitle": "Jour après jour à {{city}}",
-      "day": "Jour {{number}}",
-      "editPlan": "Modifier le programme",
-      "editPlaceholder": "Demandez des changements, ex. « déplacer le musée l'après-midi »",
-      "applyChanges": "Appliquer les changements",
-      "weatherLabel": "Météo"
-    },
-    "reconciliation": {
-      "title": "Presque terminé",
-      "subtitle": "Quelques étapes nécessitent votre attention avant de finaliser",
-      "stageNeedsAttention": "Cette étape est incomplète",
-      "addNow": "L'ajouter maintenant",
-      "writeOwn": "Saisir la mienne",
-      "skipForGood": "Ne pas inclure",
-      "writeOwnPlaceholder": "Décrivez ce que vous souhaitez ici…",
-      "allComplete": "Tout est en ordre !",
-      "assemblePlan": "Créer mon plan"
-    },
-    "final": {
-      "title": "Votre voyage est prêt",
-      "subtitle": "Voici votre plan complet",
-      "downloadPlan": "Télécharger le plan",
-      "exportCalendar": "Ajouter à Google Agenda",
-      "shareEmail": "Partager par courriel",
-      "totalBudget": "Budget total",
-      "withinBudget": "Dans le budget",
-      "overBudget": "Dépassement de {{amount}}",
-      "startNewTrip": "Planifier un autre voyage"
-    },
-    "blastRadius": {
-      "title": "Revenir en arrière réinitialisera les étapes suivantes",
-      "description": "Modifier cette étape efface tout ce qui suit. Vous devrez refaire :",
-      "affectedStages": "Étapes qui seront réinitialisées",
-      "confirmBack": "Oui, revenir en arrière",
-      "keepEditing": "Annuler"
-    },
-    "budget": {
-      "flights": "Vols",
-      "accommodation": "Hébergement",
-      "activities": "Activités",
-      "miscellaneous": "Divers",
-      "total": "Total"
-    },
+  "app": {
+    "name": "Travel Planner",
+    "tagline": "Planifiez votre voyage idéal, étape par étape"
+  },
+  "common": {
+    "next": "Suivant",
+    "back": "Retour",
+    "skip": "Passer",
+    "continue": "Continuer",
+    "confirm": "Confirmer",
+    "cancel": "Annuler",
+    "save": "Enregistrer",
+    "edit": "Modifier",
+    "delete": "Supprimer",
+    "loading": "Chargement…",
+    "retry": "Réessayer",
+    "close": "Fermer",
+    "optional": "facultatif",
+    "required": "requis",
+    "yes": "Oui",
+    "no": "Non"
+  },
+  "theme": {
+    "day": "Jour",
+    "night": "Nuit",
+    "auto": "auto",
+    "switchToDay": "Passer au mode jour",
+    "switchToNight": "Passer au mode nuit"
+  },
+  "language": {
+    "label": "Langue",
+    "select": "Choisir la langue"
+  },
+  "auth": {
+    "loginTitle": "Bon retour",
+    "loginSubtitle": "Connectez-vous pour continuer",
+    "registerTitle": "Créez votre compte",
+    "registerSubtitle": "Commencez à planifier votre prochaine aventure",
+    "email": "Courriel",
+    "emailPlaceholder": "vous@exemple.com",
+    "password": "Mot de passe",
+    "passwordPlaceholder": "Saisissez votre mot de passe",
+    "loginButton": "Se connecter",
+    "registerButton": "Créer un compte",
+    "noAccount": "Vous n'avez pas de compte ?",
+    "haveAccount": "Vous avez déjà un compte ?",
+    "signUpLink": "S'inscrire",
+    "signInLink": "Se connecter",
+    "logout": "Se déconnecter",
     "errors": {
-      "loadTripFailed": "Impossible de charger votre voyage. Veuillez réessayer.",
-      "transitionFailed": "Impossible d'enregistrer ce changement. Veuillez réessayer.",
-      "sessionExpired": "Votre session a expiré. Veuillez vous reconnecter.",
-      "generic": "Une erreur s'est produite. Veuillez réessayer."
+      "invalidCredentials": "Courriel ou mot de passe incorrect.",
+      "emailTaken": "Un compte existe déjà avec ce courriel.",
+      "emailInvalid": "Veuillez saisir une adresse courriel valide.",
+      "passwordTooShort": "Le mot de passe doit comporter au moins 8 caractères.",
+      "networkError": "Impossible de joindre le serveur. Veuillez réessayer.",
+      "unknown": "Une erreur s'est produite. Veuillez réessayer."
     }
+  },
+  "sidebar": {
+    "tripSetup": "Préparation du voyage",
+    "logistics": "Transport et hébergement",
+    "finishingUp": "Finalisation",
+    "yourTrips": "Vos voyages",
+    "newTrip": "Nouveau voyage",
+    "stop": "Étape"
+  },
+  "stages": {
+    "setup": "Les bases",
+    "country": "Pays",
+    "city": "Ville",
+    "flights": "Vols",
+    "accommodation": "Hébergement",
+    "activities": "Activités",
+    "daily_plan": "Programme quotidien",
+    "final": "Votre plan"
+  },
+  "stageStatus": {
+    "unvisited": "Non commencé",
+    "current": "En cours",
+    "completed": "Terminé",
+    "skipped": "Passé",
+    "selfProvided": "Le vôtre"
+  },
+  "setup": {
+    "title": "Commençons par les bases",
+    "subtitle": "Parlez-nous de votre voyage",
+    "origin": "Départ de",
+    "originPlaceholder": "ex. Toronto",
+    "departureDate": "Date de départ",
+    "returnDate": "Date de retour",
+    "travelers": "Voyageurs",
+    "travelType": "Style de voyage",
+    "travelTypeRelax": "Détente",
+    "travelTypeActive": "Actif",
+    "travelTypeHybrid": "Un peu des deux",
+    "budget": "Budget",
+    "budgetPlaceholder": "ex. 3000",
+    "currency": "Devise",
+    "withKids": "Voyage avec enfants",
+    "preferences": "Autre chose ?",
+    "preferencesPlaceholder": "Centres d'intérêt, incontournables, régime alimentaire…"
+  },
+  "country": {
+    "title": "Où dans le monde ?",
+    "subtitle": "Choisissez un pays. Vous choisirez votre ville ensuite.",
+    "whyChosen": "Pourquoi ce choix",
+    "climateNote": "Climat",
+    "safetyNote": "Avis aux voyageurs",
+    "advisorySource": "Avis du Département d'État américain, mis à jour en direct.",
+    "moreOptions": "Voir d'autres pays"
+  },
+  "city": {
+    "title": "Choisissez votre base",
+    "subtitle": "Villes en {{country}}. Vous y resterez tout le séjour.",
+    "whyChosen": "Pourquoi ce choix",
+    "climateNote": "Climat",
+    "preferenceLabel": "Quelque chose de particulier ?",
+    "preferencePlaceholder": "ex. en bord de mer, pas une mégapole",
+    "applyPreference": "Appliquer",
+    "hubHint": "C'est votre base pour tout le séjour — les excursions viendront plus tard.",
+    "addCity": "Ajouter une ville",
+    "moreOptions": "Voir d'autres villes"
+  },
+  "flights": {
+    "title": "Choisissez votre vol",
+    "subtitle": "Options pour {{city}}",
+    "cheapest": "Le moins cher",
+    "fastest": "Le plus rapide",
+    "comfortable": "Le plus confortable",
+    "outbound": "Aller",
+    "return": "Retour",
+    "duration": "{{hours}} h",
+    "stops_one": "{{count}} escale",
+    "stops_other": "{{count}} escales",
+    "nonstop": "Sans escale",
+    "selectFlight": "Choisir ce vol",
+    "provideOwn": "J'ai réservé moi-même",
+    "provideOwnPlaceholder": "ex. Air Canada AC061, 1 180 $"
+  },
+  "accommodation": {
+    "title": "Où allez-vous loger ?",
+    "subtitle": "Hébergements à {{city}}",
+    "perNight": "/ nuit",
+    "total": "Total",
+    "nights_one": "{{count}} nuit",
+    "nights_other": "{{count}} nuits",
+    "rating": "Note",
+    "selectStay": "Choisir cet hébergement",
+    "provideOwn": "J'ai réservé moi-même",
+    "provideOwnPlaceholder": "ex. Marriott Centre-ville, 180 $/nuit"
+  },
+  "activities": {
+    "title": "Que souhaitez-vous faire ?",
+    "subtitle": "Activités à {{city}}",
+    "estimatedCost": "Coût estimé",
+    "duration": "{{hours}} h",
+    "addActivity": "Ajouter",
+    "removeActivity": "Retirer",
+    "selected_one": "{{count}} activité sélectionnée",
+    "selected_other": "{{count}} activités sélectionnées",
+    "confirmSelection": "Confirmer la sélection",
+    "moreOptions": "Voir plus"
+  },
+  "dailyPlan": {
+    "title": "Votre programme quotidien",
+    "subtitle": "Jour après jour à {{city}}",
+    "day": "Jour {{number}}",
+    "editPlan": "Modifier le programme",
+    "editPlaceholder": "Demandez des changements, ex. « déplacer le musée l'après-midi »",
+    "applyChanges": "Appliquer les changements",
+    "weatherLabel": "Météo"
+  },
+  "final": {
+    "title": "Votre voyage est prêt",
+    "subtitle": "Voici votre plan complet",
+    "downloadPlan": "Télécharger le plan",
+    "exportCalendar": "Ajouter à Google Agenda",
+    "shareEmail": "Partager par courriel",
+    "totalBudget": "Budget total",
+    "withinBudget": "Dans le budget",
+    "overBudget": "Dépassement de {{amount}}",
+    "startNewTrip": "Planifier un autre voyage"
+  },
+  "blastRadius": {
+    "title": "Revenir en arrière réinitialisera les étapes suivantes",
+    "description": "Modifier cette étape efface tout ce qui suit. Vous devrez refaire :",
+    "affectedStages": "Étapes qui seront réinitialisées",
+    "confirmBack": "Oui, revenir en arrière",
+    "keepEditing": "Annuler"
+  },
+  "budget": {
+    "flights": "Vols",
+    "accommodation": "Hébergement",
+    "activities": "Activités",
+    "miscellaneous": "Divers",
+    "total": "Total"
+  },
+  "errors": {
+    "loadTripFailed": "Impossible de charger votre voyage. Veuillez réessayer.",
+    "transitionFailed": "Impossible d'enregistrer ce changement. Veuillez réessayer.",
+    "optionsFailed": "Impossible de générer des suggestions pour le moment.",
+    "sessionExpired": "Votre session a expiré. Veuillez vous reconnecter.",
+    "generic": "Une erreur s'est produite. Veuillez réessayer."
   }
+}

@@ -17,7 +17,11 @@ import {
 //   budget_currency  str     default 'USD'
 //   with_kids        bool    default false
 //   preferences_text str?    optional
-//   multi_city       bool    default false
+//
+// No multi_city. Under hub-and-spoke you don't declare a multi-city trip up
+// front — you discover it at the city stage by adding a second city, and
+// Trip.multi_city is derived from that commit. Asking here meant asking before
+// the user had any idea what was in the country they hadn't picked yet.
 //
 // Trip-level stage: cannot be skipped (the whole wizard depends on it), so
 // showSkip=false. FORWARD is also hidden — advancing without a setup commit
@@ -42,7 +46,6 @@ export default function SetupStage({ commit, commitData, transitioning }) {
   const [budgetAmount, setBudgetAmount] = useState(commitData?.budget_amount ?? '')
   const [budgetCurrency, setBudgetCurrency] = useState(commitData?.budget_currency ?? 'USD')
   const [withKids, setWithKids] = useState(commitData?.with_kids ?? false)
-  const [multiCity, setMultiCity] = useState(commitData?.multi_city ?? false)
   const [preferences, setPreferences] = useState(commitData?.preferences_text ?? '')
 
   // Required fields present, and return date not before departure
@@ -63,7 +66,6 @@ export default function SetupStage({ commit, commitData, transitioning }) {
       budget_currency: budgetCurrency,
       with_kids: withKids,
       preferences_text: preferences.trim() || null,
-      multi_city: multiCity,
     })
   }
 
@@ -149,11 +151,6 @@ export default function SetupStage({ commit, commitData, transitioning }) {
             checked={withKids}
             onChange={setWithKids}
             label={t('setup.withKids')}
-          />
-          <Toggle
-            checked={multiCity}
-            onChange={setMultiCity}
-            label={t('setup.multiCity')}
           />
         </div>
 

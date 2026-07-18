@@ -26,6 +26,8 @@ import * as api from '../api/client'
 //   currentCommit()   — the commit row for the current position
 //   currentStop()     — the Stop object for current_stop_index, or null
 //   setupData()       — the committed setup payload, or null
+//   countryData()     — the committed country payload, or null
+//   cityData()        — the committed city list, or null
 
 // ── Trip-creation in-flight guard ────────────────────────────────────────────
 // App.jsx auto-creates a trip from an effect guarded by `!trip`. That guard
@@ -159,11 +161,22 @@ export const useTripStore = create((set, get) => ({
     return c?.commit_data ?? null
   },
 
-  // The committed destination list — needed to label stops
-  destinationData: () => {
+  // The committed country — { country: { name, why_chosen_summary,
+  // climate_note, safety_note } }. CityStage needs the name for its subtitle.
+  countryData: () => {
     const { trip } = get()
     if (!trip) return null
-    const c = trip.trip_stage_commits.find((s) => s.stage === 'destination')
+    const c = trip.trip_stage_commits.find((s) => s.stage === 'country')
+    return c?.commit_data ?? null
+  },
+
+  // The committed city list — { cities: [City] }, cities[0] is the hub.
+  // Replaces destinationData(), which read the 'destination' stage: that stage
+  // no longer exists, so it had been returning null for every trip.
+  cityData: () => {
+    const { trip } = get()
+    if (!trip) return null
+    const c = trip.trip_stage_commits.find((s) => s.stage === 'city')
     return c?.commit_data ?? null
   },
 }))

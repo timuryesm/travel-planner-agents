@@ -5,12 +5,19 @@ import { motion, AnimatePresence } from 'framer-motion'
 // ─────────────────────────────────────────────────────────────────────────────
 // Sidebar — wizard navigation
 // ─────────────────────────────────────────────────────────────────────────────
-// Renders the flattened stage sequence as grouped, status-marked nav items:
+// Renders the flattened stage sequence as grouped, status-marked nav items.
+// Hub-and-spoke shape:
 //
-//   Trip setup      → setup, destination            (trip-level)
-//   <City name>     → flights, accommodation,        (one group per stop)
-//                     activities, daily_plan
-//   Finishing up    → reconciliation, final          (trip-level)
+//   Trip setup   → setup, country, city, flights,      (trip-level, pre-stop)
+//                  [intercity], accommodation
+//   <City name>  → activities                          (one row per stop)
+//   Finishing up → daily_plan, final                   (trip-level, post-stop)
+//
+// The stop groups shrank from four stages to one: flights, accommodation and
+// daily_plan are all trip-level now (one flight, one hotel, one plan per trip),
+// so activities is the only stage that repeats per city. intercity appears in
+// the setup group only when there's more than one city — same condition as the
+// backend's flattened_sequence().
 //
 // Each stage shows a status dot derived from its commit_type:
 //   unvisited  → hollow grey
@@ -30,15 +37,26 @@ import { motion, AnimatePresence } from 'framer-motion'
 //
 // If trip is null (no trip loaded yet), renders just the section skeleton.
 
-const STOP_STAGES = ['flights', 'accommodation', 'activities', 'daily_plan']
-const PRE_STAGES = ['setup', 'destination']
-const POST_STAGES = ['reconciliation', 'final']
+// The one stage that repeats per stop.
+const STOP_STAGES = ['activities']
+// Trip-level, before the stop block. intercity is conditional (>= 2 cities).
+const PRE_STAGES = ['setup', 'country', 'city', 'flights', 'intercity', 'accommodation']
+// Trip-level, after the stop block.
+const POST_STAGES = ['daily_plan', 'final']
+
+// intercity only exists when there's somewhere to travel to — same signal
+// (stop count) and same condition as the backend's flattened_sequence(), so
+// the two stay in agreement by deriving from the same number rather than by
+// consulting each other.
+function preStages(numStops) {
+  return PRE_STAGES.filter((s) => s !== 'intercity' || numStops >= 2)
+}
 
 // Build the full ordered position list so we can compute "before/after current"
 // and the blast radius. Mirrors the backend's flattened_sequence().
 function buildSequence(numStops) {
   const seq = []
-  PRE_STAGES.forEach((s) => seq.push({ stage: s, stopIndex: null }))
+  preStages(numStops).forEach((s) => seq.push({ stage: s, stopIndex: null }))
   for (let i = 0; i < numStops; i++) {
     STOP_STAGES.forEach((s) => seq.push({ stage: s, stopIndex: i }))
   }
@@ -318,7 +336,7 @@ export default function Sidebar({ trip, onNavigateBack }) {
           <p className="text-white/35 text-[11px] font-semibold uppercase tracking-widest px-2 mb-1.5">
             {t('sidebar.tripSetup')}
           </p>
-          {renderGroup(PRE_STAGES.map((s) => ({ stage: s, stopIndex: null })))}
+          {renderGroup(preStages(numStops).map((s) => ({ stage: s, stopIndex: null })))}
         </div>
 
         {/* One group per stop */}
