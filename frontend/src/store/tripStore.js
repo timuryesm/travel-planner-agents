@@ -153,6 +153,26 @@ export const useTripStore = create((set, get) => ({
     return trip.stops.find((s) => s.stop_index === trip.current_stop_index) ?? null
   },
 
+  // The hub stop — stops[0], the city you fly into and stay in. Distinct from
+  // currentStop(): the hub is fixed for the whole trip, while currentStop()
+  // follows the wizard's position and is null on trip-level stages. Flights and
+  // accommodation are trip-level now (one roundtrip, one hotel), so they can't
+  // read the hub from currentStop() — it's null while they're on screen. They
+  // read it here instead.
+  //
+  // Null until the city stage commits and creates the stops. The components
+  // guard on it: no hub yet means the wizard shouldn't be on those stages, but
+  // a guarded null renders a safe empty state instead of throwing.
+  hubStop: () => {
+    const { trip } = get()
+    if (!trip) return null
+    return trip.stops.find((s) => s.stop_index === 0) ?? null
+  },
+
+  hubCity: () => {
+    return get().hubStop()?.city ?? null
+  },
+
   // The committed setup payload — needed by later stages (dates, travelers, budget)
   setupData: () => {
     const { trip } = get()

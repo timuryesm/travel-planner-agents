@@ -1,23 +1,33 @@
 import React, { useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { StageCard, StageActions, Textarea } from './primitives'
+import useTripStore from '../../store/tripStore'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DailyPlanStage — the day-by-day itinerary for one stop
+// DailyPlanStage — the day-by-day itinerary for the trip
 // ─────────────────────────────────────────────────────────────────────────────
 // Commit payload validates against DailyPlanCommitData:
 //   { day_by_day: [ DayPlan ] }
-//   DayPlan: { date, weather_line, activity_names: [str] }
+//   DayPlan: { date, city, weather_line, activity_names: [str] }
 //
-// The plan is generated locally from the stop's committed activities + the
-// trip dates, distributing activities across days. A free-text box lets the
-// user request changes — in this mock version the box is captured but not
-// AI-applied; the real free-text editing (Phase D) will send the note to an
-// agent and replace day_by_day with the edited result. What's committed is the
-// current (possibly edited) day_by_day list.
+// TRIP-LEVEL under hub-and-spoke: one plan for the whole trip, so it reads the
+// hub from hubStop() rather than currentStop() (which is null here — the same
+// trap that white-screened flights). The plan is built from the hub stop's
+// committed activities + the trip dates.
 //
-// activity_names reference Activity.name from the same stop's activities
-// commit — a loose string reference, since everything lives in JSONB.
+// SINGLE-CITY SCOPE. Track 1 has one city, the hub, so every day is in the hub
+// and activities come from the hub's activities commit. Multi-city — days that
+// move between hub and spokes, activities pulled from each spoke's commit — is
+// step 19. This version names the hub city on every DayPlan (the schema now
+// requires `city`), which is exactly right for one city and the honest floor
+// for more.
+//
+// The free-text edit box is captured but not yet AI-applied; real editing lands
+// in Phase D. What's committed is the current day_by_day list.
+//
+// activity_names reference Activity.name from the hub's activities commit — a
+// loose string reference, since everything lives in JSONB. Real weather
+// replaces MOCK_WEATHER in step 12; this stays mock for the prop-shift fix.
 
 function addDays(iso, n) {
   const d = new Date(iso)
@@ -39,8 +49,10 @@ function activitiesForStop(stop) {
   return Array.isArray(chosen) ? chosen : []
 }
 
-// Distribute activities across the available days (round-robin, ~2 per day)
-function generatePlan(activities, startDate, numDays) {
+// Distribute activities across the available days (round-robin, ~2 per day).
+// Each DayPlan carries the city — the schema requires it now that a plan can in
+// principle move between hub and spokes. Single-city: it's the hub every day.
+function generatePlan(activities, startDate, numDays, city) {
   const days = []
   const perDay = Math.max(1, Math.ceil(activities.length / Math.max(1, numDays)))
 
@@ -48,6 +60,7 @@ function generatePlan(activities, startDate, numDays) {
     const slice = activities.slice(d * perDay, (d + 1) * perDay)
     days.push({
       date: startDate ? addDays(startDate, d) : `Day ${d + 1}`,
+      city,
       weather_line: MOCK_WEATHER[d % MOCK_WEATHER.length],
       activity_names: slice.map((a) => a.name),
     })
@@ -61,8 +74,13 @@ function nightsBetween(depart, ret) {
   return n > 0 ? n : 3
 }
 
-export default function DailyPlanStage({ commit, skip, forward, commitData, stop, setupData, transitioning }) {
+export default function DailyPlanStage({ commit, skip, forward, commitData, setupData, transitioning }) {
   const { t } = useTranslation()
+  const hubStop = useTripStore((s) => s.hubStop)
+
+  // Trip-level: the plan spans the trip, based in the hub. Not currentStop() —
+  // null while a trip-level stage renders.
+  const stop = hubStop()
   const city = stop?.city ?? ''
 
   const activities = useMemo(() => activitiesForStop(stop), [stop])
@@ -71,7 +89,7 @@ export default function DailyPlanStage({ commit, skip, forward, commitData, stop
   // Use the prior committed plan if revisiting, else generate a fresh one
   const [plan] = useState(() => {
     if (commitData?.day_by_day?.length) return commitData.day_by_day
-    return generatePlan(activities, setupData?.departure_date, numDays)
+    return generatePlan(activities, setupData?.departure_date, numDays, city)
   })
 
   const [editNote, setEditNote] = useState('')

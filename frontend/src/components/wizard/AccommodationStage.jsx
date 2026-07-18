@@ -13,7 +13,13 @@ import useTripStore from '../../store/tripStore'
 //                  total_price_usd, booking_url?, property_type, provider }
 //
 // Options come from the HotelAgent via
-// POST /trips/{id}/stages/accommodation/options?stop_index=N.
+// POST /trips/{id}/stages/accommodation/options.  NO stop_index — under
+// hub-and-spoke there's one hotel for the whole trip, in the hub city, so this
+// is a trip-level stage. It reads the hub from the store's hubStop() selector,
+// NOT from currentStop(): the wizard's current_stop_index is null here, so
+// currentStop() is null and `stop.stop_index` would throw. That white-screened
+// the flights stage before this fix.
+//
 // With AIRBNB_ENABLED False the agent returns mock data through the real path —
 // the frontend neither knows nor cares.
 //
@@ -39,10 +45,14 @@ function Stars({ value }) {
   )
 }
 
-export default function AccommodationStage({ commit, skip, forward, commitData, stop, setupData, transitioning }) {
+export default function AccommodationStage({ commit, skip, forward, commitData, setupData, transitioning }) {
   const { t } = useTranslation()
   const trip = useTripStore((s) => s.trip)
+  const hubStop = useTripStore((s) => s.hubStop)
 
+  // Trip-level stage: the hub is stops[0], fixed for the whole trip. Not
+  // currentStop() — that's null while a trip-level stage is on screen.
+  const stop = hubStop()
   const city = stop?.city ?? ''
   const nights = nightsBetween(setupData?.departure_date, setupData?.return_date)
 
@@ -59,7 +69,7 @@ export default function AccommodationStage({ commit, skip, forward, commitData, 
   useEffect(() => {
     let cancelled = false
     setLoading(true)
-    getStageOptions(trip.id, 'accommodation', stop.stop_index)
+    getStageOptions(trip.id, 'accommodation')
       .then((opts) => {
         if (cancelled) return
         setHotels(opts)
@@ -73,7 +83,16 @@ export default function AccommodationStage({ commit, skip, forward, commitData, 
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trip.id, stop.stop_index])
+  }, [trip.id])
+
+  // AccommodationCommitData requires check_in / check_out alongside `selected`.
+  // Single-city Track 1: check-in is the departure date, check-out the return —
+  // you hold the hub room for the whole trip. The plan lets the user shorten
+  // check-out later (nights spent in spokes); that picker is a later step, and
+  // the trip dates are the honest default until it exists. setupData is already
+  // a prop, so the dates are in hand.
+  const checkIn = setupData?.departure_date ?? null
+  const checkOut = setupData?.return_date ?? null
 
   function handleConfirm() {
     if (ownMode) {
@@ -89,13 +108,19 @@ export default function AccommodationStage({ commit, skip, forward, commitData, 
             property_type: 'hotel',
             provider: 'self',
           },
+          check_in: checkIn,
+          check_out: checkOut,
         },
         ownText.trim()
       )
       return
     }
     if (selectedIdx === null) return
-    commit({ selected: hotels[selectedIdx] })
+    commit({
+      selected: hotels[selectedIdx],
+      check_in: checkIn,
+      check_out: checkOut,
+    })
   }
 
   const valid = ownMode ? ownText.trim().length > 0 : selectedIdx !== null

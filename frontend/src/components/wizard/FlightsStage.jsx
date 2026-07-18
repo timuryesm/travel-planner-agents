@@ -7,10 +7,15 @@ import useTripStore from '../../store/tripStore'
 // ─────────────────────────────────────────────────────────────────────────────
 // FlightsStage — now fetches real options from the agent endpoint
 // ─────────────────────────────────────────────────────────────────────────────
-// Change from the mock version: instead of mockFlights(), we fetch on mount
-// from POST /trips/{id}/stages/flights/options?stop_index=N. The agent returns
-// FlightOption[] (currently mock data, since SKYSCANNER_ENABLED is False — but
-// the frontend no longer knows or cares; it just renders what comes back).
+// Trip-level under hub-and-spoke: one roundtrip, origin ↔ hub, for the whole
+// trip. So NO stop_index, and the hub comes from the store's hubStop()
+// selector, not from currentStop() — the wizard's current_stop_index is null
+// on this stage, so currentStop() is null and reading stop.stop_index off it
+// white-screens the page. That was the crash on entering flights.
+//
+// Fetches on mount from POST /trips/{id}/stages/flights/options. The agent
+// returns FlightOption[] (mock while SKYSCANNER_ENABLED is False — the frontend
+// neither knows nor cares; it renders what comes back).
 //
 // Everything downstream (selection, self-provided path, commit payload) is
 // unchanged from the mock version.
@@ -53,9 +58,14 @@ function LegRow({ leg, label, t }) {
 
 const LABEL_COLOR = { cheapest: '#2dd4bf', fastest: '#a78bfa', comfortable: '#fbbf24' }
 
-export default function FlightsStage({ commit, skip, forward, commitData, stop, transitioning }) {
+export default function FlightsStage({ commit, skip, forward, commitData, transitioning }) {
   const { t } = useTranslation()
   const trip = useTripStore((s) => s.trip)
+  const hubStop = useTripStore((s) => s.hubStop)
+
+  // Trip-level stage: the hub is stops[0], fixed for the whole trip. Not
+  // currentStop() — that's null while a trip-level stage is on screen.
+  const stop = hubStop()
   const city = stop?.city ?? ''
 
   const [flights, setFlights] = useState([])
@@ -68,7 +78,7 @@ export default function FlightsStage({ commit, skip, forward, commitData, stop, 
   useEffect(() => {
     let cancelled = false
     setLoading(true)
-    getStageOptions(trip.id, 'flights', stop.stop_index)
+    getStageOptions(trip.id, 'flights')
       .then((opts) => {
         if (cancelled) return
         setFlights(opts)
@@ -83,7 +93,7 @@ export default function FlightsStage({ commit, skip, forward, commitData, stop, 
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trip.id, stop.stop_index])
+  }, [trip.id])
 
   function handleConfirm() {
     if (ownMode) {
