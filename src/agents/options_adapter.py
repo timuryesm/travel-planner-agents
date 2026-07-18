@@ -95,7 +95,7 @@ def _synthetic_request(ctx: OptionsContext, destination: str) -> TravelRequest:
 
     Note this carries the SETUP preference text only. A stage-scoped hint from
     the request body travels separately, on the agent constructor, because it
-    answers a different question — see CityAgent.
+    answers a different question — see CityAgent and ActivitiesAgent.
     """
     setup = ctx.setup
     return TravelRequest(
@@ -123,12 +123,13 @@ def _discovery_result(plan: TravelPlan, options: list | None, stage: str) -> lis
     afternoon: an undeclared Pydantic field, a markdown fence, and a missing
     country — all reported to the user as a cheerful empty list.
 
-    Degrading to [] is right for FLIGHTS and ACCOMMODATION, where the mock
-    fallback is a real answer and losing them shouldn't cost the user the
-    country they already picked. It is wrong for COUNTRY and CITY: there is
-    nothing to degrade to, an empty list is a dead wizard, and the user's only
-    move is a refresh they have no reason to attempt. So these two raise, the
-    route answers 502, and the component can say "couldn't load — retry".
+    Degrading to [] is right for FLIGHTS, ACCOMMODATION and ACTIVITIES, where a
+    fallback (mock providers, or the generic activity pool) is a real answer and
+    losing the tailored version shouldn't cost the user their progress. It is
+    wrong for COUNTRY and CITY: there is nothing to degrade to, an empty list is
+    a dead wizard, and the user's only move is a refresh they have no reason to
+    attempt. So only those two go through this function and raise; the rest read
+    their results directly and tolerate an empty list.
 
     plan.errors is populated by safe_run's except branch, which is what makes
     the distinction readable here without changing safe_run's contract.
@@ -202,10 +203,22 @@ def accommodation_options(ctx: OptionsContext) -> list[dict]:
 
 
 def activities_options(ctx: OptionsContext) -> list[dict]:
-    """Things to do in one city — the only stage that repeats per stop."""
+    """
+    Things to do in one city — the only stage that repeats per stop.
+
+    Carries all three hints: preference_text (what they want from activities),
+    exclude (names already shown, for regenerate/expand), and limit (how many).
+    Like flights and accommodation it degrades to [] on failure — the agent's
+    own generic pool is the fallback, so a crash there is a quieter list, not a
+    dead end.
+    """
     req = _synthetic_request(ctx, destination=ctx.target_city or "")
     plan = TravelPlan(request=req)
-    plan = ActivitiesAgent().safe_run(plan)
+    plan = ActivitiesAgent(
+        exclude=ctx.exclude,
+        limit=ctx.limit,
+        preference_text=ctx.preference_text,
+    ).safe_run(plan)
     return [a.model_dump() for a in (plan.activities or [])]
 
 

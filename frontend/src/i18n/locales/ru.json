@@ -163,7 +163,16 @@
     "selected_few": "Выбрано {{count}} занятия",
     "selected_many": "Выбрано {{count}} занятий",
     "confirmSelection": "Подтвердить выбор",
-    "moreOptions": "Показать ещё"
+    "moreOptions": "Показать ещё",
+    "preferenceLabel": "Есть особые пожелания?",
+    "preferencePlaceholder": "напр. побольше еды, ничего слишком туристического",
+    "applyPreference": "Применить",
+    "regenerate": "Обновить",
+    "showMore": "Показать ещё",
+    "yourPicks": "Ваш выбор, по порядку",
+    "moveUp": "Вверх",
+    "moveDown": "Вниз",
+    "noneFound": "Пока нет предложений — измените пожелания."
   },
   "dailyPlan": {
     "title": "Ваш план по дням",

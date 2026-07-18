@@ -160,7 +160,16 @@
     "selected_one": "{{count}} activité sélectionnée",
     "selected_other": "{{count}} activités sélectionnées",
     "confirmSelection": "Confirmer la sélection",
-    "moreOptions": "Voir plus"
+    "moreOptions": "Voir plus",
+    "preferenceLabel": "Une envie particulière ?",
+    "preferencePlaceholder": "ex. beaucoup de gastronomie, rien de trop touristique",
+    "applyPreference": "Appliquer",
+    "regenerate": "Régénérer",
+    "showMore": "Voir plus",
+    "yourPicks": "Vos choix, dans l'ordre",
+    "moveUp": "Monter",
+    "moveDown": "Descendre",
+    "noneFound": "Aucune suggestion pour le moment — ajustez vos préférences."
   },
   "dailyPlan": {
     "title": "Votre programme quotidien",

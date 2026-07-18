@@ -160,7 +160,16 @@
     "selected_one": "{{count}} activity selected",
     "selected_other": "{{count}} activities selected",
     "confirmSelection": "Confirm selection",
-    "moreOptions": "Show more"
+    "moreOptions": "Show more",
+    "preferenceLabel": "Anything you're in the mood for?",
+    "preferencePlaceholder": "e.g. lots of food, nothing too touristy",
+    "applyPreference": "Apply",
+    "regenerate": "Regenerate",
+    "showMore": "Show more",
+    "yourPicks": "Your picks, in order",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "noneFound": "No suggestions right now — try adjusting your preferences."
   },
   "dailyPlan": {
     "title": "Your daily plan",
