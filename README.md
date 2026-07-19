@@ -1,183 +1,205 @@
 # Travel Planner Agents
 
-A multi-agent AI travel planning application with a stepwise wizard UI,
+A multi-agent AI travel-planning application with a stepwise wizard UI,
 persistent state, and JWT authentication. Specialized agents handle each
-planning domain — destinations, flights, hotels, weather, activities, and
-budget — coordinated by a central orchestrator and a wizard state machine that
-lets users navigate, skip, and revise each stage of their plan.
+planning domain — country, city, flights, hotels, weather, activities, and
+budget — coordinated by a wizard state machine that lets users navigate, skip,
+and revise each stage of their plan.
 
-Built as a portfolio project targeting production-readiness: clean architecture,
-resumable sessions, real external APIs, and a multilingual React frontend
-(English / French / Russian).
+Built as a portfolio project targeting production-readiness: clean
+architecture, resumable sessions, real external APIs, and a multilingual React
+frontend (English / French / Russian).
+
+> **Status:** mid-redesign. The project is moving from an early multi-city model
+> to a **hub-and-spoke** one (see below). Track 1 — a single city planned all
+> the way to a rendered itinerary — is nearly complete; multi-city, sharing, and
+> deployment follow. The commit history is the source of truth for what's done.
+
+---
+
+## The model: hub-and-spoke
+
+One country. One hub city you fly a roundtrip to. Optional day-trips out to
+nearby "spoke" cities and back the same day — no second hotel, no second flight.
+
+```
+        Toronto
+           │  roundtrip flight
+           ▼
+   ┌───► Tokyo ◄───┐        ← hub: the one hotel, for the whole stay
+   │       │       │
+   ▼       ▼       ▼
+ Kyoto   Osaka   Nara       ← spokes: day-trips out and back, dates chosen
+                              inside the trip window; no accommodation
+```
+
+This replaced an earlier design that searched a separate roundtrip from the
+origin to *every* city — which asked questions with no good answer ("which city
+do you fly home from?") and multiplied flights and hotels a traveler didn't
+want. Hub-and-spoke makes the common case ("base yourself somewhere, take a few
+day-trips") the natural one:
+
+- **One flight** — origin ↔ hub, roundtrip.
+- **One hotel** — in the hub, for the whole period.
+- **One daily plan** — spanning the trip, moving between hub and spokes.
+- **Activities repeat per city** — the only thing that does.
+
+Staying overnight in a spoke is out of scope: the agent can suggest where you'd
+stay, but books nothing.
+
+---
+
+## Wizard stage sequence
+
+```
+setup → country → city → flights → [intercity] → accommodation
+      → activities[0..N] → daily_plan → final
+```
+
+- **Trip-level** (one per trip): setup, country, city, flights, intercity,
+  accommodation, daily_plan, final.
+- **Stop-level** (one per city): activities — and only activities.
+- **`intercity`** appears only when more than one city is committed; single-city
+  trips skip it entirely.
+
+The sequence is derived from three lists in `enums.py` by
+`flattened_sequence(num_stops)`, so the whole ordering — including whether
+`intercity` exists — is one edit in one place. Committing the city list is what
+restructures navigation: it creates the Stop rows and rebuilds the sequence.
 
 ---
 
 ## Architecture
 
-### Phase A — agent pipeline (complete)
-
-The original run-all-at-once pipeline. Still used for the final plan assembly.
-
-```
-User Input (budget, dates, destination, interests)
-              │
-              ▼
-     ┌─────────────────┐
-     │   Orchestrator  │  ← Claude plans execution order
-     │     (Claude)    │
-     └────────┬────────┘
-              │ dispatches tasks
-    ┌─────────┼──────────────────────────┐
-    ▼         ▼          ▼              ▼
-┌────────┐ ┌────────┐ ┌──────────┐ ┌──────────┐
-│Weather │ │Flights │ │  Hotels  │ │Activities│
-│ Agent  │ │ Agent  │ │  Agent   │ │  Agent   │
-└────┬───┘ └───┬────┘ └────┬─────┘ └────┬─────┘
-     │         │           │             │
-     └─────────┴───────────┴─────────────┘
-                           │
-                    ┌──────▼──────┐
-                    │   Budget    │
-                    │    Agent    │  ← runs last
-                    └──────┬──────┘
-                           │
-                    ┌──────▼──────┐
-                    │  TravelPlan │  ← Pydantic state object
-                    └──────┬──────┘
-                           │
-              ┌────────────▼────────────┐
-              │   Structured Itinerary  │
-              │   + Budget Breakdown    │
-              │   + Booking Links       │
-              └─────────────────────────┘
-```
-
-### Phase B — wizard state machine (complete)
-
-Orchestration flips from run-all-at-once to a stepwise state machine.
-The wizard pauses at every stage so the user can inspect, refine, or skip.
-All state is persisted in Postgres between requests.
-
-```
-React Frontend
-      │
-      │  POST /trips/{id}/transition  { action: COMMIT | SKIP | FORWARD | BACK }
-      ▼
-┌─────────────────┐
-│   FastAPI       │
-│   (JWT auth)    │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────────────────────────────────┐
-│              transition(trip, action)       │
-│                                             │
-│  COMMIT  → write commit row, advance        │
-│  SKIP    → mark skipped, advance            │
-│  FORWARD → advance (stays unvisited)        │
-│  BACK    → invalidate_after cascade, jump   │
-└──────────────┬──────────────────────────────┘
-               │
-       ┌───────┴────────┐
-       ▼                ▼
-  Stage agents     PostgreSQL
-  (same as above,  (trips, stops,
-   one at a time)   stage commits)
-```
-
-**Wizard stage sequence:**
-
-```
-setup → destination
-  → [flights·1 → accommodation·1 → activities·1 → daily_plan·1]
-  → [flights·2 → accommodation·2 → activities·2 → daily_plan·2]  ← multi-city
-  → …
-  → reconciliation → final
-```
-
-### Phase C — React frontend + agent endpoints (complete)
-
-The frontend never talks to an agent directly. Four of the wizard's stages
-need *proposed options* before the user can choose, and those come from a
-single endpoint that runs the matching Phase A agent against committed wizard
-state:
+The frontend never talks to an agent directly. Stages that need *proposed
+options* before the user can choose fetch them from one endpoint that runs the
+matching agent against committed wizard state:
 
 ```
    Wizard stage mounts
           │
-          │  POST /trips/{id}/stages/{stage}/options?stop_index=N
+          │  POST /trips/{id}/stages/{stage}/options   (hints in the body)
           ▼
    ┌──────────────────┐
-   │  stage_options   │  ← validates stage, checks ownership,
-   │     (route)      │    reads the setup commit
-   └────────┬─────────┘
-            │
+   │  stage_options   │  ← validates stage, checks ownership, reads the
+   │     (route)      │    setup + country + stop commits; 409s if a
+   └────────┬─────────┘    prerequisite stage isn't done yet
+            │  run_in_threadpool  (agents are synchronous)
             ▼
    ┌──────────────────┐
-   │ options_adapter  │  ← builds a synthetic TravelPlan from
-   │                  │    commit state (setup + stop.city)
+   │ options_adapter  │  ← builds a synthetic TravelPlan from commit
+   │                  │    state; passes stage hints to the agent
    └────────┬─────────┘
             │  safe_run()
             ▼
-   ┌──────────────────────────────────────────┐
-   │  Destination │ Flight │ Hotel │ Activities│
-   └────────┬─────────────────────────────────┘
+   ┌────────────────────────────────────────────┐
+   │  Country │ City │ Flight │ Hotel │ Activities│
+   └────────┬───────────────────────────────────┘
             │
             ▼
     options[] shaped for that stage's commit payload
 ```
 
-The adapter exists because the Phase A agents are built around a single-shot
-`TravelPlan`, while the wizard's state is spread across commit rows. Rather
-than rewrite the agents for the wizard (or the wizard for the agents), one
-translation layer bridges them — so Phase A's agents stay usable by both the
-CLI pipeline and the stepwise UI.
+The adapter exists because the agents are built around a single-shot
+`TravelPlan`, while the wizard's state is spread across commit rows. One
+translation layer bridges them, so the same agents serve both the CLI pipeline
+and the stepwise UI without either being rewritten for the other.
+
+Weather is the exception: it's one object of context, not a list of options, so
+it has its own read-only endpoint (`GET /trips/{id}/weather`) rather than going
+through the options adapter.
+
+Navigation and persistence go through a single function — `transition(trip,
+action)` — which handles COMMIT / SKIP / FORWARD / BACK, validates each commit
+payload against its stage's schema *before* writing, and cascade-invalidates
+downstream stages on a backward jump.
 
 ---
 
 ## Agents
 
-| Agent | Data source | Fallback |
+| Agent | Data source | On failure |
 |---|---|---|
-| **Orchestrator** | Claude (claude-sonnet-4-6) | Default sequential plan |
-| **Destination** | Claude + U.S. State Dept advisory feed | Curated city list |
-| **Weather** | Open-Meteo forecast / archive API | — |
+| **Country** | Claude + U.S. State Dept advisory feed | Curated country pool |
+| **City** | Claude (within the committed country) | Raises — no honest generic answer |
+| **Weather** | Open-Meteo forecast / archive API | Empty forecast, neutral note |
 | **Flights** | Skyscanner via RapidAPI | Realistic mock data |
 | **Hotels** | Booking.com via RapidAPI | Realistic mock data |
 | **Airbnb** | Airbnb19 via RapidAPI | Realistic mock data |
-| **Activities** | Claude (LLM as tool) | — |
+| **Activities** | Claude | Curated activity pool |
 | **Budget** | Aggregates all agent results | — |
+| **Orchestrator** | Claude — assembles the final itinerary | — |
+
+Country and city notes are deliberately split by source:
+
+- **climate_note** comes from the model — the *typical* climate for the dates,
+  which is stable knowledge, not a forecast. There's no forecast to be had at
+  country/city selection: Open-Meteo needs coordinates, and the real forecast
+  arrives at the daily-plan stage, which has both a city and dates.
+- **safety_note** comes from the live State Department advisory feed, never the
+  model. Advisories change, and stale or invented safety guidance is worse than
+  none. On a lookup miss the note is dropped, not guessed.
 
 ### Key design decisions
 
-**Shared state over direct agent communication.** Agents never call each
-other. They read from and write to a single `TravelPlan` Pydantic object.
-This keeps agents independently testable and swappable.
+**Shared state over direct agent communication.** Agents never call each other.
+They read from and write to a single `TravelPlan` Pydantic object, which keeps
+them independently testable and swappable.
 
-**Single transition chokepoint.** All wizard navigation goes through one
-function — `transition(trip, action)`. Forward gates, cascade-invalidate,
-and future smart-invalidation are all one-place edits.
+**Single transition chokepoint.** All wizard navigation and persistence go
+through `transition(trip, action)`. Commit-payload validation, forward gates,
+and cascade-invalidate are all one-place edits. Assembly *generates* but does
+not persist; `transition()` persists.
 
-**JSONB + Pydantic as schema registry.** Each stage's commit payload is
-stored as JSONB and validated at the application boundary by a typed
-Pydantic schema. No separate table per stage; no over-normalized joins.
+**Validate on write, at the boundary.** Each stage's commit payload is stored as
+JSONB and validated against a typed Pydantic schema *before* it's written —
+`_COMMIT_SCHEMAS` maps every stage to its schema. A bad payload is rejected with
+a 422 and the trip is untouched, rather than persisting and surfacing as a 500
+several stages downstream.
 
-**Mock-first development.** Every agent with an external API dependency has
-a realistic mock fallback. The full pipeline runs without any API keys.
-Mocks are permanent production code, not scaffolding — they're the
-degradation path, not a placeholder for one.
+**Grounded parsing over hope.** Every Claude-backed agent asks for JSON through
+one shared helper (`BaseAgent.ask_claude_json`) that parses defensively — strips
+a stray markdown fence, falls back to the outermost object, retries once on a
+transient failure, and never retries a deterministic 4xx. Before it existed, a
+model that wrapped its reply in backticks would drop an agent silently into its
+fallback.
 
-**Graceful degradation.** `safe_run()` in `BaseAgent` wraps every agent in
-error handling. One failed API call never crashes the pipeline.
+**Honest failure over cheerful emptiness.** `safe_run()` catches any agent
+crash and logs the traceback — but the discovery stages (country, city) turn a
+failure into a 502 the UI can retry, rather than a 200 with an empty list that
+reads as "nothing found." Stages with a real fallback (flights, hotels,
+activities) degrade to it instead.
 
-**Live signals over model memory.** The destination agent's safety notes come
-from the current State Department advisory feed, never from the LLM. If the
-lookup fails, the claim is dropped rather than guessed — stale or invented
-safety guidance is worse than none.
+**Mock-first development.** Every agent with an external API dependency has a
+realistic mock fallback, and the flag-off mock path is the *same* code that runs
+on an API failure — so leaving the flags off exercises the real degradation
+path, not a special test mode.
 
-**One definition per shape.** `Destination` is declared once in
-`travel_plan.py` and re-exported from `schemas.py`, so the agent's output and
-the wizard's commit payload validate against the same class and cannot drift.
+**Live signals over model memory.** Safety notes come from the current State
+Department feed, cached with a TTL, never from the LLM.
+
+**One definition per shape.** `Country`, `City`, and the agent-result models are
+declared once in `travel_plan.py` and re-exported from `schemas.py`, so an
+agent's output and the matching commit payload validate against the same class
+and cannot drift.
+
+---
+
+## Agent JSON, weather, and advisories — the tricky bits
+
+Three subsystems earned dedicated handling; each is documented at its source.
+
+- **`tools/advisory_lookup.py`** — caches the State Dept feed (one document
+  covering every country) on disk with a 6-hour TTL, matches countries by exact
+  name rather than substring (so "Niger" never picks up "Nigeria"'s level),
+  treats the feed's occasional empty `[]` response as a failure rather than
+  data, and refuses to guess when a name is ambiguous.
+- **`agents/weather_agent.py`** — geocodes the hub, uses a live forecast when
+  the trip is within ~15 days, otherwise last year's same dates as a seasonal
+  proxy (labelled *typical*). The route re-keys the proxy onto the trip's actual
+  dates so the daily plan can look weather up by date.
+- **`agents/base_agent.py`** — `ask_claude_json` and `safe_run`, described
+  above.
 
 ---
 
@@ -187,26 +209,30 @@ the wizard's commit payload validate against the same class and cannot drift.
 travel-planner-agents/
 ├── src/
 │   ├── agents/
-│   │   ├── base_agent.py        ← shared contract all agents implement
-│   │   ├── orchestrator.py      ← Claude-powered planning + assembly
-│   │   ├── destination_agent.py ← Claude + live travel advisories
-│   │   ├── weather_agent.py     ← Open-Meteo forecast/historical
-│   │   ├── flight_agent.py      ← Skyscanner search + trip types
+│   │   ├── base_agent.py        ← shared contract + ask_claude_json + safe_run
+│   │   ├── orchestrator.py      ← Claude-powered final assembly
+│   │   ├── country_agent.py     ← Claude + live travel advisories
+│   │   ├── city_agent.py        ← Claude, cities within the chosen country
+│   │   ├── weather_agent.py     ← Open-Meteo forecast / seasonal proxy
+│   │   ├── flight_agent.py      ← Skyscanner search (roundtrip origin↔hub)
 │   │   ├── hotel_agent.py       ← Booking.com + property type filter
 │   │   ├── airbnb_agent.py      ← Airbnb listings + combined results
-│   │   ├── activities_agent.py  ← Claude as tool
+│   │   ├── activities_agent.py  ← Claude; preference / regenerate / expand
 │   │   ├── budget_agent.py      ← aggregates all agent results
 │   │   └── options_adapter.py   ← wizard commit state → TravelPlan agents
 │   ├── api/
 │   │   └── routes/
 │   │       ├── auth.py          ← register / login
 │   │       ├── trips.py         ← create / list / get / transition
-│   │       └── stage_options.py ← runs an agent for one wizard stage
+│   │       ├── stage_options.py ← runs an agent for one wizard stage
+│   │       └── weather.py       ← per-day forecast for the hub
 │   ├── auth/
 │   │   └── jwt.py               ← token creation + get_current_user
 │   ├── state/
 │   │   ├── travel_plan.py       ← Pydantic models for agent data
 │   │   ├── enums.py             ← CommitType, stage enums, TripStatus
+│   │   ├── position.py          ← Position + flattened_sequence()
+│   │   ├── transition.py        ← COMMIT/SKIP/FORWARD/BACK + validation
 │   │   └── schemas.py           ← commit_data payload schemas per stage
 │   ├── db/
 │   │   ├── base.py              ← async engine, session factory, get_db
@@ -231,26 +257,14 @@ travel-planner-agents/
 │   │   │   └── wizard/          ← WizardRenderer + one component per stage
 │   │   └── i18n/                ← EN / FR / RU translations
 │   └── package.json
-├── alembic/
-│   ├── env.py                   ← migration config (strips asyncpg for sync conn)
-│   └── versions/
-│       └── 0001_initial_schema.py  ← creates all 5 tables
+├── alembic/versions/           ← schema migrations
 ├── docs/
-│   ├── trip_state_model.md      ← wizard design spec (Phase B seed)
-│   └── schema_design_notes.md   ← every non-obvious schema decision explained
-├── tests/
-│   ├── conftest.py              ← clears RapidAPI key → all tests use mocks
-│   ├── test_travel_plan.py
-│   ├── test_orchestrator.py
-│   ├── test_weather_agent.py
-│   ├── test_flight_agent.py
-│   ├── test_hotel_agent.py
-│   └── test_airbnb_agent.py
-├── main.py                      ← CLI entry point (Phase A)
-├── alembic.ini                  ← Alembic configuration
-├── pyproject.toml
-├── requirements.txt
-└── .env.example
+│   ├── rebuild_plan.md         ← the hub-and-spoke redesign plan (25 steps)
+│   ├── trip_state_model.md     ← original wizard design spec
+│   └── schema_design_notes.md  ← schema decisions explained
+├── tests/                      ← agent unit tests, mocked APIs
+├── main.py                     ← CLI entry point
+└── requirements.txt
 ```
 
 ---
@@ -261,23 +275,46 @@ travel-planner-agents/
 |---|---|---|
 | `POST` | `/auth/register` | Create account, returns JWT |
 | `POST` | `/auth/login` | Form-encoded login, returns JWT |
-| `POST` | `/trips/` | Create trip + 4 unvisited trip-stage commits |
+| `POST` | `/trips/` | Create trip + one unvisited commit per trip-level stage |
 | `GET` | `/trips/` | List the caller's trips |
 | `GET` | `/trips/{id}` | Full trip state (position, commits, stops) |
 | `POST` | `/trips/{id}/transition` | COMMIT / SKIP / FORWARD / BACK |
 | `POST` | `/trips/{id}/stages/{stage}/options` | Run the stage's agent, return options |
+| `GET` | `/trips/{id}/weather` | Per-day forecast for the hub city |
 | `GET` | `/health` | Liveness check |
 
 Interactive docs at `/docs` (Swagger, with an Authorize button) and `/redoc`.
 
-Trips are scoped to their owner: another user's trip returns 404, not 403 —
-the API doesn't confirm the existence of resources you can't see.
+Trips are scoped to their owner: another user's trip returns 404, not 403 — the
+API doesn't confirm the existence of resources you can't see.
+
+---
+
+## Database schema
+
+Five tables in PostgreSQL. All PKs are UUIDs. Cascade-delete on all FKs.
+
+```
+users
+  └── trips  (current_stage, current_stop_index, multi_city)
+        ├── trip_stage_commits  (setup | country | city | flights |
+        │                        intercity | accommodation | daily_plan | final)
+        └── stops  (stop_index, city, country, start_date, end_date)
+              └── stop_stage_commits  (activities)
+```
+
+`multi_city` is derived at the **city** commit from `len(cities) > 1`, not asked
+at setup. Stop dates are nullable — the hub (index 0) takes the trip dates at
+creation; spokes stay NULL until the intercity stage fills them. Each commit row
+carries `commit_type` (chosen / self_provided / skipped / unvisited),
+`commit_data` (JSONB, validated by a Pydantic schema on write),
+`self_provided_text`, and `completed`.
 
 ---
 
 ## Setup
 
-### 1. Clone and create virtual environment
+### 1. Clone and create a virtual environment
 
 ```bash
 git clone https://github.com/timuryesm/travel-planner-agents.git
@@ -305,7 +342,7 @@ docker run -d \
 cp .env.example .env
 ```
 
-Open `.env` and fill in:
+Fill in:
 
 ```
 ANTHROPIC_API_KEY=sk-ant-...        # console.anthropic.com
@@ -315,9 +352,8 @@ SECRET_KEY=...                      # any long random string for JWT signing
 ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000
 ```
 
-`DATABASE_URL` and `SECRET_KEY` are read at module import time and have no
-defaults — a missing value fails fast at startup rather than silently
-connecting somewhere unintended.
+`DATABASE_URL` and `SECRET_KEY` are read at import time and have no defaults — a
+missing value fails fast at startup rather than connecting somewhere unintended.
 
 **Feature flags** (in `src/config/settings.py`, both default to `False`):
 
@@ -326,41 +362,26 @@ connecting somewhere unintended.
 | `SKYSCANNER_ENABLED` | Flight agent returns mock data through the real code path |
 | `AIRBNB_ENABLED` | Hotel agent returns mock data through the real code path |
 
-These exist because the RapidAPI free tiers have small quotas that a
-development loop exhausts quickly. The agents' mock paths are the same code
-that runs on an API failure, so leaving the flags off exercises the real
-degradation path rather than a special test mode.
+The RapidAPI free tiers have small quotas a development loop exhausts quickly.
+The mock paths are the same code that runs on an API failure, so leaving the
+flags off exercises the real degradation path.
 
 ### 4. Run database migrations
 
-Migrations also run automatically on app startup, so this step is only needed
-for the CLI pipeline or a fresh database inspected before first boot.
+Migrations also run on app startup, so this is only needed for the CLI or a
+fresh database inspected before first boot.
 
 ```bash
 alembic upgrade head
 ```
 
-This creates five tables: `users`, `trips`, `stops`, `trip_stage_commits`,
-`stop_stage_commits`.
-
-### 5. Subscribe to APIs on RapidAPI (optional — free tiers available)
-
-| API | Used for | Host |
-|---|---|---|
-| Skyscanner | Flight search | `skyscanner-flights-travel-api.p.rapidapi.com` |
-| Booking.com | Hotel search | `apidojo-booking-v1.p.rapidapi.com` |
-| Airbnb | Airbnb listings | `airbnb19.p.rapidapi.com` |
-
-All three use the same `RAPIDAPI_KEY`. The project works without any
-RapidAPI subscriptions — mock data is used as fallback.
-
-### 6. Run the backend
+### 5. Run the backend
 
 ```bash
 uvicorn src.main:app --reload
 ```
 
-### 7. Run the frontend
+### 6. Run the frontend
 
 ```bash
 cd frontend
@@ -368,71 +389,15 @@ npm install
 npm run dev
 ```
 
-The dev server runs on `http://localhost:5173`. It reads the API base URL from
-`VITE_API_BASE_URL` and defaults to `http://localhost:8000`, so no frontend
-`.env` is needed for local development.
+The dev server runs on `http://localhost:5173` and reads its API base URL from
+`VITE_API_BASE_URL` (default `http://localhost:8000`), so no frontend `.env` is
+needed for local development.
 
-### 8. Run the Phase A CLI (optional)
+### 7. Run the CLI (optional)
 
 ```bash
 python main.py
 ```
-
----
-
-## Usage
-
-### CLI (Phase A)
-
-Edit the request in `main.py`:
-
-```python
-request = TravelRequest(
-    destination="Tokyo",
-    origin="Toronto",
-    departure_date=date(2026, 8, 1),
-    return_date=date(2026, 8, 10),
-    budget_usd=4000.0,
-    travelers=1,
-    interests=["food", "temples", "hiking"],
-    trip_type="roundtrip",
-    accommodation_type="any",
-    accommodation_providers=["booking.com", "airbnb"],
-)
-```
-
-### Example output
-
-```
-============================================================
-Planning trip: Toronto → Tokyo
-Dates: 2026-08-01 → 2026-08-10  |  Budget: $4,000  |  Travelers: 1
-============================================================
-
-🌤  Weather in Tokyo (typical for this time of year):
-    2026-08-01: Heavy drizzle, 24–30°C
-    • Pack light, breathable clothing — it will be hot
-    • Rain expected on 8 days — pack an umbrella
-
-✈️  Best flight (roundtrip):
-    Japan Airlines · Toronto → Tokyo (14.5h)
-    Total price: $1,487.25
-    Book: https://www.skyscanner.com/...
-
-🏠  Best Entire 1-Bed Apt · via airbnb:
-    Cozy Entire 1-Bed Apt in Shimokitazawa  ★★★★
-    $95.40/night  ·  9 nights  ·  Total $858.60
-    Book: https://www.airbnb.com/...
-    (13 total: 6 from booking.com  |  7 from airbnb)
-```
-
-### Wizard (Phase B/C)
-
-Register or log in, and the app opens on the setup stage. Each stage proposes
-options, you choose one (or supply your own, or skip), and the backend advances
-the position. The sidebar shows every stage and its commit state; clicking a
-past stage warns about the blast radius before invalidating everything
-downstream of it.
 
 ---
 
@@ -442,64 +407,9 @@ downstream of it.
 python -m pytest tests/ -v
 ```
 
-All agents have unit tests with mocked external API calls. A `conftest.py`
-fixture clears the RapidAPI key, so tests run without internet access, without
-any API keys, and without spending quota — fast, free, and deterministic.
-
----
-
-## How it works
-
-### Phase A — orchestration loop
-
-```
-1. User provides TravelRequest
-2. Orchestrator calls Claude → returns ordered ExecutionPlan
-3. Pipeline loops through tasks:
-   - "weather"    → WeatherAgent (Open-Meteo)
-   - "flights"    → FlightAgent (Skyscanner)
-   - "hotels"     → HotelAgent + AirbnbAgent (based on provider preference)
-   - "activities" → ActivitiesAgent (Claude)
-   - "budget"     → BudgetAgent (aggregates all results)
-4. Each agent reads TravelPlan, adds its results, marks itself complete
-5. Orchestrator assembles final markdown itinerary
-```
-
-### Phase B/C — wizard transition loop
-
-```
-1. User authenticates (JWT)
-2. POST /trips → creates Trip + 4 TripStageCommit rows (all unvisited)
-3. For each wizard step:
-   a. GET /trips/{id} → frontend reads current position + commit state
-   b. POST /trips/{id}/stages/{stage}/options → agent proposes options
-   c. User chooses → POST /trips/{id}/transition { action: COMMIT, data: ... }
-   d. transition() writes commit row, calls advance(), updates position
-4. Committing destinations creates one Stop row per city, each with four
-   unvisited StopStageCommit rows — the stage sequence restructures itself
-5. BACK action → invalidate_after() resets all downstream commits to unvisited
-6. Reconciliation stage → nag for any skipped/unvisited stages
-7. Final stage → orchestrator assembles plan from all chosen commits
-```
-
----
-
-## Database schema
-
-Five tables in PostgreSQL. All PKs are UUIDs. Cascade-delete on all FKs.
-
-```
-users
-  └── trips  (current_stage, current_stop_index, multi_city)
-        ├── trip_stage_commits  (setup | destination | reconciliation | final)
-        └── stops  (stop_index, city, country)
-              └── stop_stage_commits  (flights | accommodation | activities | daily_plan)
-```
-
-Each commit row carries: `commit_type` (chosen / self_provided / skipped / unvisited),
-`commit_data` (JSONB, typed by Pydantic schema), `self_provided_text`, `completed`.
-
-See `docs/schema_design_notes.md` for the reasoning behind every non-obvious decision.
+Agents have unit tests with mocked external calls. A `conftest.py` fixture
+clears the API keys, so tests run without internet, without keys, and without
+spending quota — fast, free, deterministic.
 
 ---
 
@@ -507,137 +417,81 @@ See `docs/schema_design_notes.md` for the reasoning behind every non-obvious dec
 
 Honest notes on what isn't finished, kept here rather than in a private list.
 
-- **Agent calls block the event loop.** `stage_options.py` calls the
-  synchronous agents directly from an async route. With the API feature flags
-  off this is invisible (mock paths return instantly), but with Skyscanner
-  enabled its polling loop would stall the whole server for the duration.
-  Needs `run_in_threadpool`.
-- **`safe_run()` masks failures as empty results.** An agent that raises
-  produces a 200 response with `options: []`, indistinguishable from "no
-  results found." This has already hidden one real bug.
+- **`safe_run()` still flattens some failures.** Discovery stages now surface a
+  502, but flights / hotels / activities still degrade to an empty (or fallback)
+  list, so a genuine failure there is only visible in the server log, not the
+  response.
+- **Geocoding is unkeyed.** The weather agent uses Nominatim, which is rate-
+  limited and has no API key. Fine for development; deployment needs a geocoder
+  with a real quota.
 - **Trips are auto-created on load.** The frontend mints a trip as soon as you
-  authenticate, which is a placeholder for Phase D's trip list + resume flow.
+  authenticate — a placeholder for the trip-list + resume flow.
+- **Agent output is English only.** A `language` field is threaded from the UI
+  through to the request, defaulting to `en`; wiring the agent *prompts* to write
+  their prose in French and Russian is pending. Advisory notes stay English (they
+  come from the State Dept feed, not the model).
 
 ---
 
 ## Roadmap
 
-### Phase A — core agent engine ✅
+The redesign is organised as four tracks; see `docs/rebuild_plan.md` for the
+full 25-step breakdown.
 
-- [x] Shared `TravelPlan` state model (Pydantic)
-- [x] Orchestrator with Claude (structured JSON execution plan)
-- [x] Weather agent (Open-Meteo forecast + historical proxy)
-- [x] Flight agent (Skyscanner API, one-way / roundtrip / multi-city)
-- [x] Hotel agent (Booking.com, all property types)
-- [x] Airbnb agent (combined results across providers)
-- [x] Activities agent (Claude as tool)
-- [x] Budget agent (aggregates costs, checks against budget)
-- [x] Mock fallback for all external APIs
-- [x] Unit tests for all agents
+### Foundations ✅
+- [x] Hub-and-spoke state model — `enums.py`, `position.py`, conditional `intercity`
+- [x] Commit-payload validation on write (`_COMMIT_SCHEMAS`, 422 on bad input)
+- [x] Country agent (Claude + live advisory feed, disk-cached)
+- [x] City agent (cities within the committed country)
+- [x] Shared defensive JSON parsing (`ask_claude_json`)
+- [x] Discovery failures surface as 502, not silent empty lists
 
-### Phase B — FastAPI backend + PostgreSQL ✅
+### Track 1 — single city, end to end 🚧
+- [x] Country + City wizard stages (split from the old Destination stage)
+- [x] Flights / accommodation / daily-plan moved to trip-level
+- [x] Activities — preference, regenerate, expand, ordered picks
+- [x] Real weather in the daily plan (live + seasonal proxy)
+- [ ] `budget_agent.aggregate()` — shared by CLI and wizard
+- [ ] `POST /trips/{id}/assemble` + final itinerary rendering
+- [ ] Final stage — renders, regenerates, commits
 
-- [x] Trip state model design (`docs/trip_state_model.md`)
-- [x] Pydantic commit schemas (`src/state/schemas.py`)
-- [x] SQLAlchemy ORM models + Alembic migration (5 tables live in Postgres)
-- [x] `Position` dataclass + `flattened_sequence()` + `positions_after()`
-- [x] `transition()` function — COMMIT / SKIP / FORWARD / BACK + `invalidate_after()`
-- [x] Trip repository — async DB layer (`create_trip`, `load_trip`, `save_commit`)
-- [x] JWT auth — `hash_password`, `create_access_token`, `get_current_user`
-- [x] FastAPI routes — `/auth/register`, `/auth/login`, `/trips`, `/trips/{id}/transition`
-- [x] FastAPI app entrypoint (`src/main.py`)
-- [x] Verified end-to-end against live Postgres
+### Track 2 — multi-city 📋
+- [ ] "Add another city" — spoke list with reorder/remove
+- [ ] Intercity agent — hub↔spoke travel, web search + citations
+- [ ] Intercity stage — constrained date pickers
+- [ ] Activities loop across stops; assembly renders spokes
 
-### Phase C — React frontend + agent endpoints ✅
-
-- [x] Wizard UI — all 8 stages, step-by-step, live backend
-- [x] English / French / Russian i18n via react-i18next
-- [x] Results cards (flights, hotels, activities, daily plan)
-- [x] Blast-radius warning before backward navigation
-- [x] Photographic Toronto day/night background, CN Tower fireworks
-- [x] Destination agent (Claude + live State Dept advisory signal)
-- [x] `options_adapter` — wizard commit state → TravelPlan agents
-- [x] `POST /trips/{id}/stages/{stage}/options`
-- [x] All four option stages fetching from the live endpoint
-
-### Phase D — plan editing + integrations 📋
-
-- [ ] Trip list + resume flow (replaces auto-create)
-- [ ] Free-text chat edits to daily plan
+### Track 3 — plans and sharing 📋
+- [ ] Trip list + resume (replaces auto-create)
+- [ ] Download the plan
 - [ ] Google Calendar export
 - [ ] Email sharing (confirm-before-send)
+- [ ] Free-text chat edits to the daily plan
 
-### Phase E — deployment 📋
-
+### Track 4 — deployment 📋
 - [ ] Compress background images (PNG → WebP)
-- [ ] Move agent calls off the event loop
+- [ ] Keyed geocoding
 - [ ] Dockerized deployment
-
----
-
-## What this project teaches
-
-| Concept | Where it appears |
-|---|---|
-| Agent-to-agent communication | Shared `TravelPlan` state object |
-| Structured LLM output | Orchestrator JSON execution plan |
-| Agent boundaries and contracts | `BaseAgent.safe_run()` pattern |
-| Adapting an interface without rewriting either side | `options_adapter.py` |
-| Graceful degradation | Mock fallbacks + error logging on plan |
-| Grounding an LLM in a live source | Destination agent's advisory lookup |
-| Cache-with-TTL over a rate-limited API | `tools/advisory_lookup.py` |
-| Multi-provider data merging | Booking.com + Airbnb combined results |
-| Wizard state machine | `transition()` + `invalidate_after()` |
-| Cascade-invalidate | Backward navigation resets downstream commits |
-| JSONB + Pydantic as schema registry | Per-stage commit_data payloads |
-| Async SQLAlchemy | `AsyncSession`, `async_sessionmaker`, `asyncpg` |
-| Database migrations | Alembic with hand-authored initial migration |
-| JWT authentication | Stateless auth for resumable wizard sessions |
-| External API integration | Skyscanner, Booking.com, Airbnb, Open-Meteo |
-| Pydantic data validation | All inter-agent and API boundary data |
-| Client-side request deduplication | In-flight promise cache in `client.js` |
 
 ---
 
 ## Tech stack
 
-**Backend**
+**Backend** — Python 3.13 · Anthropic Claude (claude-sonnet-4-6) · FastAPI ·
+PostgreSQL 16 · SQLAlchemy 2.x async (`asyncpg`) · Alembic · Pydantic v2 ·
+python-jose (JWT) · bcrypt · httpx · geopy · pytest
 
-- **Python 3.11+**
-- **Anthropic Claude** (claude-sonnet-4-6) — orchestration, destinations, activities
-- **FastAPI** — async REST API
-- **PostgreSQL 16** — persistent wizard state
-- **SQLAlchemy 2.x** — async ORM (`asyncpg` driver)
-- **Alembic** — database migrations
-- **Pydantic v2** — data validation and state management
-- **python-jose** — JWT auth
-- **bcrypt** — password hashing (used directly, not via passlib)
-- **httpx** — HTTP client
-- **geopy** — city name → coordinates (weather agent)
-- **pytest** — testing
+**Frontend** — React + Vite · Tailwind CSS · Framer Motion · Zustand ·
+react-i18next (EN / FR / RU)
 
-**Frontend**
-
-- **React** + **Vite**
-- **Tailwind CSS** — styling
-- **Framer Motion** — stage transitions and background animation
-- **Zustand** — wizard state store
-- **react-i18next** — EN / FR / RU
-
-**External services**
-
-- **RapidAPI** — Skyscanner, Booking.com, Airbnb
-- **Open-Meteo** — free weather API (no key required)
-- **U.S. State Department** — travel advisory feed (no key required)
-- **Docker** — local Postgres
+**External services** — RapidAPI (Skyscanner, Booking.com, Airbnb) · Open-Meteo
+(no key) · U.S. State Department advisory feed (no key) · Docker (local Postgres)
 
 ---
 
 ## Contributing
 
-Each phase is a series of small, standalone Git commits. Follow the commit
-history to see every design decision as it was made — including the reasoning
-behind schema choices, state machine tradeoffs, and API integration fixes.
-
-See `docs/trip_state_model.md` for the full wizard design spec, and
-`docs/schema_design_notes.md` for the persistence layer rationale.
+Each step is a small, standalone Git commit. Follow the history to see every
+design decision as it was made — including the reasoning behind schema choices,
+state-machine tradeoffs, and the bugs found and fixed along the way. The
+redesign plan lives in `docs/rebuild_plan.md`.
