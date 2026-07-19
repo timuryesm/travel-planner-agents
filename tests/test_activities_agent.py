@@ -57,17 +57,48 @@ def test_activities_fallback_on_failure():
 
 
 def test_activities_real_parse_logic():
-    """Test the actual JSON parsing with a mocked Claude client."""
+    """Exercise the real parse path with a mocked Claude client.
+
+    The client is built inside BaseAgent.ask_claude_json now (activities_agent
+    no longer imports anthropic), so the patch targets base_agent. stop_reason
+    is set explicitly because ask_claude_json checks it for truncation before
+    parsing — a bare MagicMock would leave that to Mock's default behaviour.
+    """
     agent = ActivitiesAgent()
     plan  = make_plan()
 
     mock_response = MagicMock()
     mock_response.content = [MagicMock(text=MOCK_CLAUDE_RESPONSE)]
+    mock_response.stop_reason = "end_turn"
 
-    with patch("src.agents.activities_agent.anthropic.Anthropic") as mock_anthropic:
+    with patch("src.agents.base_agent.anthropic.Anthropic") as mock_anthropic:
         mock_anthropic.return_value.messages.create.return_value = mock_response
         result = agent.safe_run(plan)
 
     assert len(result.activities) == 2
     assert result.activities[0].name == "Tsukiji Market"
     assert result.activities[1].estimated_cost_usd == 0.0
+
+
+def test_activities_parses_response_wrapped_in_markdown_fence():
+    """The bug that started the ask_claude_json migration: a fenced reply.
+
+    The old hand-rolled json.loads died on the leading ```. _parse_json strips
+    the fence, so this now parses instead of silently dropping into the
+    fallback pool.
+    """
+    agent = ActivitiesAgent()
+    plan  = make_plan()
+
+    fenced = "```json\n" + MOCK_CLAUDE_RESPONSE + "\n```"
+    mock_response = MagicMock()
+    mock_response.content = [MagicMock(text=fenced)]
+    mock_response.stop_reason = "end_turn"
+
+    with patch("src.agents.base_agent.anthropic.Anthropic") as mock_anthropic:
+        mock_anthropic.return_value.messages.create.return_value = mock_response
+        result = agent.safe_run(plan)
+
+    # Parsed the real two activities, not the generic fallback pool.
+    assert len(result.activities) == 2
+    assert result.activities[0].name == "Tsukiji Market"
