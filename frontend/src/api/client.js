@@ -199,6 +199,14 @@ export function getTrip(tripId) {
   return request(`/trips/${tripId}`, { method: 'GET' })
 }
 
+// ── Weather endpoint ──────────────────────────────────────────────────────────
+// GET /trips/{id}/weather → { city, forecast_by_day, packing_tips, is_seasonal }
+// forecast_by_day maps "YYYY-MM-DD" → a human line. is_seasonal is true when the
+// trip is too far out for a live forecast and the lines are last year's proxy.
+export function getWeather(tripId) {
+  return request(`/trips/${tripId}/weather`, { method: 'GET' })
+}
+
 // POST /trips/{id}/transition  → TripDetailResponse
 // action is one of the discriminated-union shapes the backend expects:
 //   { action: 'COMMIT', commit_type, data, self_provided_text? }

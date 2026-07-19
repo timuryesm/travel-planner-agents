@@ -178,7 +178,9 @@
     "editPlan": "Modifier le programme",
     "editPlaceholder": "Demandez des changements, ex. « déplacer le musée l'après-midi »",
     "applyChanges": "Appliquer les changements",
-    "weatherLabel": "Météo"
+    "weatherLabel": "Météo",
+    "seasonalNote": "Météo typique pour cette période — le voyage est trop lointain pour des prévisions en temps réel.",
+    "weatherUnavailable": "Impossible de charger la météo pour ces dates."
   },
   "final": {
     "title": "Votre voyage est prêt",

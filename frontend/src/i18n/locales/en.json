@@ -178,7 +178,9 @@
     "editPlan": "Edit plan",
     "editPlaceholder": "Ask for changes, e.g. \"move the museum to the afternoon\"",
     "applyChanges": "Apply changes",
-    "weatherLabel": "Weather"
+    "weatherLabel": "Weather",
+    "seasonalNote": "Typical weather for this time of year — the trip's too far out for a live forecast.",
+    "weatherUnavailable": "Weather couldn't be loaded for these dates."
   },
   "final": {
     "title": "Your trip is ready",

@@ -108,6 +108,13 @@ class SetupCommitData(BaseModel):
     budget_currency: str = "USD"
     with_kids: bool = False
     preferences_text: Optional[str] = None
+    # UI language at trip creation. Threaded to the agents so their PROSE
+    # (why_chosen_summary, climate_note, activity descriptions) can be written
+    # in the user's language, while JSON keys and enum values stay English.
+    # Default "en" so every existing agent ignores it harmlessly until the
+    # prompts learn to use it. Advisory notes stay English regardless — they
+    # come from the State Dept feed, not the model.
+    language: str = "en"
 
 
 class CountryCommitData(BaseModel):

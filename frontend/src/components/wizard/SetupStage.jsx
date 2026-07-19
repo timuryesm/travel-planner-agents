@@ -35,7 +35,7 @@ function todayISO() {
 }
 
 export default function SetupStage({ commit, commitData, transitioning }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
 
   // Prefill from an existing commit when the user navigates back to this stage
   const [origin, setOrigin] = useState(commitData?.origin ?? '')
@@ -66,6 +66,7 @@ export default function SetupStage({ commit, commitData, transitioning }) {
       budget_currency: budgetCurrency,
       with_kids: withKids,
       preferences_text: preferences.trim() || null,
+      language: (i18n.language || 'en').split('-')[0],
     })
   }
 

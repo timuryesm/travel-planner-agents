@@ -35,6 +35,7 @@ class TravelRequest(BaseModel):
     with_kids: bool = False
     travel_style: str = "hybrid"          # "relax" | "active" | "hybrid"
     preferences_text: Optional[str] = None  # verbatim, never tokenised
+    language: str = "en"                    # UI language; agents write prose in it (later)
 
 
 # ── Per-agent result models ──────────────────────────────────────────────────

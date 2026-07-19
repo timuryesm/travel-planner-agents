@@ -1,6 +1,7 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { StageCard, StageActions, Textarea } from './primitives'
+import { StageCard, StageActions } from './primitives'
+import { getWeather } from '../../api/client'
 import useTripStore from '../../store/tripStore'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -26,20 +27,21 @@ import useTripStore from '../../store/tripStore'
 // in Phase D. What's committed is the current day_by_day list.
 //
 // activity_names reference Activity.name from the hub's activities commit — a
-// loose string reference, since everything lives in JSONB. Real weather
-// replaces MOCK_WEATHER in step 12; this stays mock for the prop-shift fix.
+// loose string reference, since everything lives in JSONB.
+//
+// Weather is real now (step 12): GET /trips/{id}/weather returns a per-day
+// forecast for the hub, live when the trip is within ~15 days, otherwise a
+// seasonal proxy from last year's same dates (is_seasonal=true, lines tagged
+// "(typical)"). The plan is built client-side, then each day's weather_line is
+// filled from that lookup by DATE. A day with no matching forecast entry (the
+// window can exceed the archive's coverage) gets a neutral dash — never a
+// fabricated line.
 
 function addDays(iso, n) {
   const d = new Date(iso)
   d.setDate(d.getDate() + n)
   return d.toISOString().slice(0, 10)
 }
-
-const MOCK_WEATHER = [
-  'Sunny, 24 °C', 'Partly cloudy, 22 °C', 'Clear, 26 °C',
-  'Light breeze, 23 °C', 'Sunny, 25 °C', 'Scattered clouds, 21 °C',
-  'Warm, 27 °C', 'Mild, 20 °C',
-]
 
 // Read the chosen activities for this stop from the trip object
 function activitiesForStop(stop) {
@@ -50,18 +52,20 @@ function activitiesForStop(stop) {
 }
 
 // Distribute activities across the available days (round-robin, ~2 per day).
-// Each DayPlan carries the city — the schema requires it now that a plan can in
-// principle move between hub and spokes. Single-city: it's the hub every day.
-function generatePlan(activities, startDate, numDays, city) {
+// Each DayPlan carries the city (schema requires it) and a weather_line looked
+// up by date from the forecast map — empty string when the date isn't covered,
+// which the render turns into a neutral dash rather than inventing a line.
+function generatePlan(activities, startDate, numDays, city, forecastByDay) {
   const days = []
   const perDay = Math.max(1, Math.ceil(activities.length / Math.max(1, numDays)))
 
   for (let d = 0; d < numDays; d++) {
     const slice = activities.slice(d * perDay, (d + 1) * perDay)
+    const iso = startDate ? addDays(startDate, d) : null
     days.push({
-      date: startDate ? addDays(startDate, d) : `Day ${d + 1}`,
+      date: iso ?? `Day ${d + 1}`,
       city,
-      weather_line: MOCK_WEATHER[d % MOCK_WEATHER.length],
+      weather_line: (iso && forecastByDay[iso]) || '',
       activity_names: slice.map((a) => a.name),
     })
   }
@@ -86,18 +90,52 @@ export default function DailyPlanStage({ commit, skip, forward, commitData, setu
   const activities = useMemo(() => activitiesForStop(stop), [stop])
   const numDays = nightsBetween(setupData?.departure_date, setupData?.return_date)
 
-  // Use the prior committed plan if revisiting, else generate a fresh one
-  const [plan] = useState(() => {
-    if (commitData?.day_by_day?.length) return commitData.day_by_day
-    return generatePlan(activities, setupData?.departure_date, numDays, city)
-  })
+  const trip = useTripStore((s) => s.trip)
 
-  const [editNote, setEditNote] = useState('')
+  // Revisiting a committed plan keeps it verbatim — the user may have edited it,
+  // and its weather lines were real when generated. A fresh plan waits for the
+  // forecast before it's built, so weather lands on it from the first render.
+  const revisiting = !!commitData?.day_by_day?.length
+  const [plan, setPlan] = useState(() =>
+    revisiting ? commitData.day_by_day : null
+  )
+  const [weatherState, setWeatherState] = useState('loading') // loading|ready|seasonal|failed
+
+  useEffect(() => {
+    if (revisiting) { setWeatherState('ready'); return }
+    let cancelled = false
+    getWeather(trip.id)
+      .then((w) => {
+        if (cancelled) return
+        setPlan(generatePlan(activities, setupData?.departure_date, numDays, city, w.forecast_by_day || {}))
+        setWeatherState(w.is_seasonal ? 'seasonal' : 'ready')
+      })
+      .catch(() => {
+        if (cancelled) return
+        // No forecast — build the plan anyway with blank weather lines. The
+        // stage still works; the days just don't show a forecast.
+        setPlan(generatePlan(activities, setupData?.departure_date, numDays, city, {}))
+        setWeatherState('failed')
+      })
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trip.id])
 
   function handleConfirm() {
-    // In this mock the plan is committed as-is. Phase D applies editNote via an
-    // agent before committing; for now the note is simply ignored on commit.
+    // Committed as generated, or as previously committed on revisit. Free-text
+    // editing (Phase D) will rewrite the plan before this point later.
+    if (!plan) return
     commit({ day_by_day: plan })
+  }
+
+  if (!plan) {
+    return (
+      <StageCard title={t('dailyPlan.title')} subtitle={t('dailyPlan.subtitle', { city })}>
+        <div className="py-10 text-center text-white/50 text-sm">
+          {t('common.loading')}
+        </div>
+      </StageCard>
+    )
   }
 
   return (
@@ -105,6 +143,13 @@ export default function DailyPlanStage({ commit, skip, forward, commitData, setu
       title={t('dailyPlan.title')}
       subtitle={t('dailyPlan.subtitle', { city })}
     >
+      {(weatherState === 'seasonal' || weatherState === 'failed') && (
+        <p className="text-white/40 text-xs mb-3">
+          {weatherState === 'seasonal'
+            ? t('dailyPlan.seasonalNote')
+            : t('dailyPlan.weatherUnavailable')}
+        </p>
+      )}
       <div className="flex flex-col gap-3">
         {plan.map((day, i) => (
           <div
@@ -121,7 +166,7 @@ export default function DailyPlanStage({ commit, skip, forward, commitData, setu
                 <span className="text-white/40 font-normal ml-2">{day.date}</span>
               </h3>
               <span className="text-white/45 text-xs">
-                {t('dailyPlan.weatherLabel')}: {day.weather_line}
+                {t('dailyPlan.weatherLabel')}: {day.weather_line || '—'}
               </span>
             </div>
 
@@ -146,18 +191,9 @@ export default function DailyPlanStage({ commit, skip, forward, commitData, setu
         ))}
       </div>
 
-      {/* Free-text edit box (captured; AI-applied in Phase D) */}
-      <div className="mt-5">
-        <label className="block text-white/70 text-xs font-medium mb-1.5">
-          {t('dailyPlan.editPlan')}
-        </label>
-        <Textarea
-          value={editNote}
-          onChange={setEditNote}
-          placeholder={t('dailyPlan.editPlaceholder')}
-          rows={2}
-        />
-      </div>
+      {/* Free-text plan editing (send a note, agent rewrites the plan) is
+          Track 3 / Phase D. Omitted here rather than shown as a box that
+          discards what you type. */}
 
       <StageActions
         onConfirm={handleConfirm}
