@@ -53,11 +53,14 @@ class WeatherAgent(BaseAgent):
 
     def _fetch_forecast(self, lat: float, lon: float, start: date, end: date) -> tuple[dict, bool]:
         today = date.today()
+        # Open-Meteo /forecast serves roughly today..+16d. Leave a day of margin
+        # (15) and require BOTH ends inside it: the endpoint 400s a range that
+        # runs past the horizon instead of returning a partial one.
         max_forecast_date = today + timedelta(days=15)
 
-        if today <= start <= max_forecast_date:
-            # Near future — use real forecast
-            self.logger.info("Using live forecast (within 15 days)")
+        if today <= start and end <= max_forecast_date:
+            # Near future, whole trip forecastable — use the real forecast.
+            self.logger.info("Using live forecast (whole range within 15 days)")
             params = {
                 "latitude":         lat,
                 "longitude":        lon,
