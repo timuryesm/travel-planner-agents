@@ -35,7 +35,6 @@ class TravelRequest(BaseModel):
     with_kids: bool = False
     travel_style: str = "hybrid"          # "relax" | "active" | "hybrid"
     preferences_text: Optional[str] = None  # verbatim, never tokenised
-    language: str = "en"                    # UI language; agents write prose in it (later)
 
 
 # ── Per-agent result models ──────────────────────────────────────────────────
@@ -164,6 +163,27 @@ class BudgetBreakdown(BaseModel):
 
 # ── The central object every agent reads and writes ──────────────────────────
 
+class DayPlan(BaseModel):
+    """
+    One day in the trip's daily plan.
+
+    Lives here (not schemas.py) so TravelPlan.day_by_day can reference it
+    without a circular import — schemas.py imports FROM this module, so the
+    dependency only runs one way. Re-exported from schemas.py, the same pattern
+    as Country / City / Activity.
+
+    city names where you are that day: under hub-and-spoke one plan spans the
+    trip and moves between hub and spokes, so a day that doesn't name its city
+    is ambiguous. activity_names is an ordered list of Activity.name values —
+    a loose string reference, since all data lives in JSONB. This is the
+    mutated form; free-text chat edits are applied here.
+    """
+    date: date
+    city: str
+    weather_line: str
+    activity_names: list[str]
+
+
 class TravelPlan(BaseModel):
     """
     The single source of truth passed between all agents.
@@ -190,6 +210,13 @@ class TravelPlan(BaseModel):
     proposed_countries: Optional[list[Country]] = None
     proposed_cities: Optional[list[City]] = None
     intercity_options: Optional[list[IntercityOption]] = None
+
+    # The arranged day-by-day plan. The CLI pipeline leaves this None and lets
+    # assemble_itinerary distribute activities; the wizard fills it from the
+    # committed daily_plan, which is authoritative (the user may have reordered
+    # it), so assembly renders these days rather than re-distributing. Declared,
+    # not set dynamically — see proposed_countries above for why.
+    day_by_day: Optional[list[DayPlan]] = None
 
     # Orchestrator writes here to explain its decisions
     itinerary_markdown: Optional[str] = None

@@ -208,6 +208,21 @@ Do not invent details that aren't in the data."""
                 )
             lines.append("")
 
+        # ── Committed day-by-day (wizard path) ───────────────────────────
+        # When the wizard has already arranged activities into days, that plan
+        # is authoritative — the user may have reordered it. Give Claude the
+        # exact structure to render rather than asking it to re-distribute.
+        # The CLI path has no day_by_day and falls through to the instruction
+        # below, which asks for a fresh distribution.
+        day_by_day = getattr(plan, "day_by_day", None)
+        if day_by_day:
+            lines.append("PLANNED DAYS (already arranged — render these as-is):")
+            for d in day_by_day:
+                names = ", ".join(d.activity_names) if d.activity_names else "open day"
+                weather = f" — {d.weather_line}" if d.weather_line else ""
+                lines.append(f"  {d.date} ({d.city}){weather}: {names}")
+            lines.append("")
+
         # ── Budget ───────────────────────────────────────────────────────
         if plan.budget:
             b = plan.budget
@@ -220,10 +235,18 @@ Do not invent details that aren't in the data."""
             lines.append(f"  Within budget: {'Yes' if b.within_budget else 'No'}")
             lines.append("")
 
-        lines.append(
-            "Now write the complete day-by-day itinerary following the structure "
-            "in your instructions. Distribute activities across the "
-            f"{nights} days, matching outdoor activities to good-weather days."
-        )
+        if getattr(plan, "day_by_day", None):
+            lines.append(
+                "Now write the complete itinerary following your structure. The "
+                "days are already arranged above — render them in that order, "
+                "adding your prose, prices and weather notes. Do not reorder or "
+                "re-distribute the activities."
+            )
+        else:
+            lines.append(
+                "Now write the complete day-by-day itinerary following the "
+                f"structure in your instructions. Distribute activities across the "
+                f"{nights} days, matching outdoor activities to good-weather days."
+            )
 
         return "\n".join(lines)

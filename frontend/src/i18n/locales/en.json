@@ -183,15 +183,17 @@
     "weatherUnavailable": "Weather couldn't be loaded for these dates."
   },
   "final": {
-    "title": "Your trip is ready",
-    "subtitle": "Here's your complete plan",
-    "downloadPlan": "Download plan",
-    "exportCalendar": "Add to Google Calendar",
-    "shareEmail": "Share by email",
-    "totalBudget": "Total budget",
+    "title": "Your itinerary",
+    "subtitle": "Everything, assembled.",
+    "assembling": "Assembling your plan…",
+    "assemblingDetail": "Writing your day-by-day itinerary — this takes a few seconds.",
+    "assembleFailed": "Couldn't assemble the plan right now.",
+    "total": "Total",
     "withinBudget": "Within budget",
-    "overBudget": "Over budget by {{amount}}",
-    "startNewTrip": "Plan another trip"
+    "overBudget": "Over budget",
+    "regenerate": "Regenerate",
+    "generatedAt": "Generated",
+    "confirmPlan": "Save this plan"
   },
   "blastRadius": {
     "title": "Going back will reset later steps",

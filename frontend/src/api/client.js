@@ -199,6 +199,16 @@ export function getTrip(tripId) {
   return request(`/trips/${tripId}`, { method: 'GET' })
 }
 
+// ── Assembly endpoint ─────────────────────────────────────────────────────────
+// POST /trips/{id}/assemble → { itinerary_markdown, budget, generated_at }
+// Generate-only: produces the itinerary and budget from committed choices and
+// returns them WITHOUT saving. FinalStage commits the result separately, which
+// is what persists it as the final commit. Not cached — Regenerate is meant to
+// re-run it, and it's one call per explicit user action.
+export function assembleTrip(tripId) {
+  return request(`/trips/${tripId}/assemble`, { method: 'POST' })
+}
+
 // ── Weather endpoint ──────────────────────────────────────────────────────────
 // GET /trips/{id}/weather → { city, forecast_by_day, packing_tips, is_seasonal }
 // forecast_by_day maps "YYYY-MM-DD" → a human line. is_seasonal is true when the

@@ -186,15 +186,17 @@
     "weatherUnavailable": "Не удалось загрузить погоду для этих дат."
   },
   "final": {
-    "title": "Ваша поездка готова",
-    "subtitle": "Вот ваш полный план",
-    "downloadPlan": "Скачать план",
-    "exportCalendar": "Добавить в Google Календарь",
-    "shareEmail": "Поделиться по эл. почте",
-    "totalBudget": "Общий бюджет",
+    "title": "Ваш маршрут",
+    "subtitle": "Всё собрано воедино.",
+    "assembling": "Составляем ваш план…",
+    "assemblingDetail": "Готовим маршрут по дням — это займёт несколько секунд.",
+    "assembleFailed": "Не удалось собрать план. Попробуйте ещё раз.",
+    "total": "Итого",
     "withinBudget": "В рамках бюджета",
-    "overBudget": "Превышение на {{amount}}",
-    "startNewTrip": "Спланировать другую поездку"
+    "overBudget": "Превышение бюджета",
+    "regenerate": "Обновить",
+    "generatedAt": "Создано",
+    "confirmPlan": "Сохранить план"
   },
   "blastRadius": {
     "title": "Возврат назад сбросит последующие этапы",

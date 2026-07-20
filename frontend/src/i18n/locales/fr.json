@@ -183,15 +183,17 @@
     "weatherUnavailable": "Impossible de charger la météo pour ces dates."
   },
   "final": {
-    "title": "Votre voyage est prêt",
-    "subtitle": "Voici votre plan complet",
-    "downloadPlan": "Télécharger le plan",
-    "exportCalendar": "Ajouter à Google Agenda",
-    "shareEmail": "Partager par courriel",
-    "totalBudget": "Budget total",
+    "title": "Votre itinéraire",
+    "subtitle": "Tout est assemblé.",
+    "assembling": "Assemblage de votre plan…",
+    "assemblingDetail": "Rédaction de votre itinéraire jour par jour — quelques secondes.",
+    "assembleFailed": "Impossible d'assembler le plan pour le moment.",
+    "total": "Total",
     "withinBudget": "Dans le budget",
-    "overBudget": "Dépassement de {{amount}}",
-    "startNewTrip": "Planifier un autre voyage"
+    "overBudget": "Hors budget",
+    "regenerate": "Régénérer",
+    "generatedAt": "Généré le",
+    "confirmPlan": "Enregistrer ce plan"
   },
   "blastRadius": {
     "title": "Revenir en arrière réinitialisera les étapes suivantes",

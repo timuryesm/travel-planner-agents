@@ -30,6 +30,7 @@ from pydantic import BaseModel, Field
 # this module already imports from it; defining them here and importing back
 # would be circular.
 from src.state.travel_plan import (  # noqa: F401
+    DayPlan,
     Activity,
     BudgetBreakdown,
     Citation,
@@ -63,29 +64,6 @@ class IntercitySegment(BaseModel):
     selected: IntercityOption
 
 
-class DayPlan(BaseModel):
-    """
-    One day in the trip's daily plan.
-
-    city says where you are that day. The old design had one daily_plan per
-    stop, so the city was implicit in which commit row you were reading. Under
-    hub-and-spoke there is a single plan spanning the whole trip, and it moves
-    between the hub and its spokes — so a day that doesn't name its city is
-    ambiguous.
-
-    activity_names is an ordered list of Activity.name values from that city's
-    activities commit. Loose string reference — not a FK — because all data
-    lives in JSONB.
-
-    This is the *mutated* form: free-text chat edits are applied here.
-    What's stored is the current (potentially user-edited) version.
-    """
-    date: date
-    city: str
-    weather_line: str               # e.g. "Sunny, 24 °C"
-    activity_names: list[str]       # ordered, references Activity.name
-
-
 # ── Per-stage commit_data payload schemas ─────────────────────────────────────
 
 class SetupCommitData(BaseModel):
@@ -108,14 +86,7 @@ class SetupCommitData(BaseModel):
     budget_currency: str = "USD"
     with_kids: bool = False
     preferences_text: Optional[str] = None
-    # UI language at trip creation. Threaded to the agents so their PROSE
-    # (why_chosen_summary, climate_note, activity descriptions) can be written
-    # in the user's language, while JSON keys and enum values stay English.
-    # Default "en" so every existing agent ignores it harmlessly until the
-    # prompts learn to use it. Advisory notes stay English regardless — they
-    # come from the State Dept feed, not the model.
     language: str = "en"
-
 
 class CountryCommitData(BaseModel):
     """

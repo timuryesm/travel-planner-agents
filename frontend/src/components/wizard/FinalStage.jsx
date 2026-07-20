@@ -1,226 +1,246 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { StageCard, Textarea } from './primitives'
+import { StageCard, StageActions } from './primitives'
+import { assembleTrip } from '../../api/client'
 import useTripStore from '../../store/tripStore'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ReconciliationStage — the pre-final gate
+// FinalStage — assemble and confirm the itinerary
 // ─────────────────────────────────────────────────────────────────────────────
-// Scans all stop-level stages for ones needing attention (NAG_BOTH policy:
-// skipped OR unvisited) and offers three doors per stage:
-//   1. Add it now   → BACK to that stage (jump back to fill it in)
-//   2. Write my own → free-text capture → self_provided commit on that stage
-//   3. Leave it out → no change; it stays out of the plan
+// Two-step by design (see the assemble route): POST /assemble GENERATES the
+// itinerary + budget and returns them; committing this stage PERSISTS them as
+// FinalCommitData. Keeping the itinerary in the commit means transition()'s
+// cascade-invalidate handles staleness — go BACK and change the hotel, and the
+// final commit is invalidated like any other downstream stage.
 //
-// When nothing needs attention, shows an "all good" state and the assemble
-// button. Committing this stage (FORWARD via confirm) advances to final,
-// which triggers plan assembly on the backend.
+// So this component:
+//   - on mount (fresh), calls /assemble and shows the result unsaved
+//   - on revisit, renders the SAVED commit without paying to regenerate
+//   - Regenerate re-runs /assemble (an explicit, paid choice)
+//   - Confirm commits the currently-shown result as FinalCommitData
 //
-// This stage reaches into the store directly (rather than only using the
-// passed props) because its actions target OTHER stages' commits, not its own:
-//   - "Add it now" is a BACK transition to a stop-level stage
-//   - "Write my own" needs to commit to a specific stop stage, then return
-// The store exposes back() and a helper to commit to an arbitrary position is
-// not available, so "write my own" uses BACK then the target stage handles it.
-// For v1 simplicity, "write my own" here jumps back to the stage (same as
-// "add it now") where the user can use that stage's own self-provided path.
+// Replaces the old ReconciliationStage, which the redesign dropped: with only
+// activities skippable per stop, there was nothing left to reconcile.
+//
+// Minimal markdown rendering, no dependency: the itinerary is Claude-authored
+// markdown, rendered by a small formatter below. A real markdown lib is a
+// deployment-time nicety (Track 4), not needed to prove the flow.
 
-const STOP_STAGES = ['flights', 'accommodation', 'activities', 'daily_plan']
-
-// Collect all stop-level stages that are skipped or unvisited (NAG_BOTH)
-function findIncompleteStages(trip) {
-  if (!trip) return []
-  const out = []
-  const stops = [...trip.stops].sort((a, b) => a.stop_index - b.stop_index)
-  for (const stop of stops) {
-    for (const stageName of STOP_STAGES) {
-      const commit = stop.stage_commits.find((c) => c.stage === stageName)
-      if (!commit) continue
-      const type = commit.commit_type
-      if (type === 'skipped' || type === 'unvisited') {
-        out.push({
-          stage: stageName,
-          stopIndex: stop.stop_index,
-          city: stop.city,
-          type,
-        })
-      }
-    }
-  }
-  return out
-}
-
-export default function ReconciliationStage({ commit, transitioning }) {
+export default function FinalStage({ commit, commitData, transitioning }) {
   const { t } = useTranslation()
   const trip = useTripStore((s) => s.trip)
-  const back = useTripStore((s) => s.back)
 
-  const incomplete = findIncompleteStages(trip)
+  // Saved commit on revisit, else null until /assemble returns.
+  const saved = commitData?.itinerary_markdown ? commitData : null
 
-  // Track which stage the user is writing their own text for
-  const [writingFor, setWritingFor] = useState(null)  // {stage, stopIndex} | null
-  const [ownText, setOwnText] = useState('')
+  const [result, setResult] = useState(saved) // { itinerary_markdown, budget, generated_at }
+  const [loading, setLoading] = useState(!saved)
+  const [failed, setFailed] = useState(false)
 
-  // "Add it now" — jump back to the stage to fill it in properly
-  function addNow(stage, stopIndex) {
-    back(stage, stopIndex)
+  const runAssemble = useCallback(() => {
+    let cancelled = false
+    setLoading(true)
+    setFailed(false)
+    assembleTrip(trip.id)
+      .then((r) => { if (!cancelled) setResult(r) })
+      .catch(() => { if (!cancelled) setFailed(true) })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [trip.id])
+
+  // Assemble on first mount only when there's no saved plan to show.
+  useEffect(() => {
+    if (saved) return
+    const cleanup = runAssemble()
+    return cleanup
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  function handleConfirm() {
+    if (!result) return
+    // Commit exactly what's shown. Shape already matches FinalCommitData.
+    commit({
+      itinerary_markdown: result.itinerary_markdown,
+      budget: result.budget,
+      generated_at: result.generated_at,
+    })
   }
 
-  // "Write my own" — for v1, jump back to the stage where the user can use
-  // that stage's built-in self-provided path. (A future refinement could
-  // commit self_provided text directly from here.)
-  function writeOwn(stage, stopIndex) {
-    setWritingFor({ stage, stopIndex })
-    setOwnText('')
+  if (loading) {
+    return (
+      <StageCard title={t('final.title')} subtitle={t('final.assembling')}>
+        <div className="py-12 text-center text-white/50 text-sm">
+          {t('final.assemblingDetail')}
+        </div>
+      </StageCard>
+    )
   }
 
-  function submitOwn() {
-    if (writingFor) {
-      // Jump to the stage so the user completes it with their own text there
-      back(writingFor.stage, writingFor.stopIndex)
-      setWritingFor(null)
-    }
+  if (failed || !result) {
+    return (
+      <StageCard title={t('final.title')} subtitle={t('final.subtitle')}>
+        <div className="py-12 text-center">
+          <p className="text-white/60 text-sm mb-4">{t('final.assembleFailed')}</p>
+          <button
+            onClick={runAssemble}
+            className="text-sm hover:underline"
+            style={{ color: '#2dd4bf' }}
+          >
+            {t('common.retry')}
+          </button>
+        </div>
+      </StageCard>
+    )
   }
 
-  // "Assemble" — commit reconciliation (advances to final → assembly)
-  function handleAssemble() {
-    commit({})
-  }
-
-  const stageLabel = (stage, city) => `${t(`stages.${stage}`)} · ${city}`
+  const b = result.budget
+  const overBudget = b && b.within_budget === false
 
   return (
-    <StageCard
-      title={t('reconciliation.title')}
-      subtitle={
-        incomplete.length > 0
-          ? t('reconciliation.subtitle')
-          : t('reconciliation.allComplete')
-      }
-    >
-      {incomplete.length === 0 ? (
-        // ── All complete ──
-        <div className="flex flex-col items-center py-8 text-center">
-          <div
-            style={{
-              width: 56, height: 56, borderRadius: '50%',
-              background: 'rgba(45,212,191,0.15)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              marginBottom: 16,
-            }}
+    <StageCard title={t('final.title')} subtitle={t('final.subtitle')}>
+      {/* Budget banner */}
+      {b && (
+        <div
+          className="rounded-xl px-4 py-3 mb-4 flex items-center justify-between"
+          style={{
+            background: overBudget ? 'rgba(251,113,133,0.12)' : 'rgba(45,212,191,0.12)',
+            border: `1px solid ${overBudget ? 'rgba(251,113,133,0.3)' : 'rgba(45,212,191,0.3)'}`,
+          }}
+        >
+          <span className="text-white/80 text-sm font-medium">
+            {t('final.total')}: ${b.total_usd?.toLocaleString()}
+          </span>
+          <span
+            className="text-xs font-semibold"
+            style={{ color: overBudget ? '#fb7185' : '#2dd4bf' }}
           >
-            <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
-              <path d="M7 14 L12 19 L21 9" stroke="#2dd4bf" strokeWidth="2.5"
-                strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </div>
-          <p className="text-white/70 text-sm mb-6">{t('reconciliation.allComplete')}</p>
-          <button
-            onClick={handleAssemble}
-            disabled={transitioning}
-            className="px-6 py-3 rounded-lg text-sm font-semibold text-white"
-            style={{
-              background: transitioning
-                ? 'rgba(45,212,191,0.4)'
-                : 'linear-gradient(135deg, #2dd4bf, #38bdf8)',
-              opacity: transitioning ? 0.7 : 1,
-            }}
-          >
-            {transitioning ? t('common.loading') : t('reconciliation.assemblePlan')}
-          </button>
-        </div>
-      ) : (
-        // ── Stages needing attention ──
-        <div className="flex flex-col gap-3">
-          {incomplete.map(({ stage, stopIndex, city, type }) => {
-            const isWriting =
-              writingFor?.stage === stage && writingFor?.stopIndex === stopIndex
-            return (
-              <div
-                key={`${stage}-${stopIndex}`}
-                className="rounded-xl p-4"
-                style={{
-                  background: 'rgba(255,255,255,0.05)',
-                  border: '1px solid rgba(251,191,36,0.25)',
-                }}
-              >
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="dot-skipped" />
-                  <span className="text-white font-medium text-sm">
-                    {stageLabel(stage, city)}
-                  </span>
-                  <span className="text-white/35 text-xs ml-auto">
-                    {t(`stageStatus.${type === 'skipped' ? 'skipped' : 'unvisited'}`)}
-                  </span>
-                </div>
-
-                {!isWriting ? (
-                  <div className="flex gap-2 flex-wrap">
-                    <button
-                      onClick={() => addNow(stage, stopIndex)}
-                      disabled={transitioning}
-                      className="px-3 py-1.5 rounded-lg text-xs font-medium text-white"
-                      style={{ background: 'rgba(45,212,191,0.2)' }}
-                    >
-                      {t('reconciliation.addNow')}
-                    </button>
-                    <button
-                      onClick={() => writeOwn(stage, stopIndex)}
-                      disabled={transitioning}
-                      className="px-3 py-1.5 rounded-lg text-xs font-medium text-white/70 hover:text-white"
-                      style={{ background: 'rgba(255,255,255,0.08)' }}
-                    >
-                      {t('reconciliation.writeOwn')}
-                    </button>
-                    <span className="px-3 py-1.5 text-xs text-white/40">
-                      {t('reconciliation.skipForGood')}
-                    </span>
-                  </div>
-                ) : (
-                  <div className="flex flex-col gap-2">
-                    <Textarea
-                      value={ownText}
-                      onChange={setOwnText}
-                      placeholder={t('reconciliation.writeOwnPlaceholder')}
-                      rows={2}
-                    />
-                    <div className="flex gap-2">
-                      <button
-                        onClick={submitOwn}
-                        className="px-3 py-1.5 rounded-lg text-xs font-medium text-white"
-                        style={{ background: 'rgba(45,212,191,0.25)' }}
-                      >
-                        {t('common.continue')}
-                      </button>
-                      <button
-                        onClick={() => setWritingFor(null)}
-                        className="px-3 py-1.5 rounded-lg text-xs font-medium text-white/60"
-                      >
-                        {t('common.cancel')}
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )
-          })}
-
-          {/* Assemble anyway — leave the remaining stages out */}
-          <button
-            onClick={handleAssemble}
-            disabled={transitioning}
-            className="mt-3 px-6 py-3 rounded-lg text-sm font-semibold text-white self-start"
-            style={{
-              background: transitioning
-                ? 'rgba(45,212,191,0.4)'
-                : 'linear-gradient(135deg, #2dd4bf, #38bdf8)',
-              opacity: transitioning ? 0.7 : 1,
-            }}
-          >
-            {transitioning ? t('common.loading') : t('reconciliation.assemblePlan')}
-          </button>
+            {overBudget ? t('final.overBudget') : t('final.withinBudget')}
+          </span>
         </div>
       )}
+
+      {/* Itinerary */}
+      <div
+        className="rounded-xl px-5 py-4 mb-4 overflow-y-auto"
+        style={{
+          background: 'rgba(255,255,255,0.04)',
+          border: '1px solid rgba(255,255,255,0.10)',
+          maxHeight: '52vh',
+        }}
+      >
+        <Markdown text={result.itinerary_markdown} />
+      </div>
+
+      <div className="flex items-center gap-4 mb-2">
+        <button
+          onClick={runAssemble}
+          disabled={transitioning}
+          className="text-sm hover:underline"
+          style={{ color: '#2dd4bf', opacity: transitioning ? 0.5 : 1 }}
+        >
+          {t('final.regenerate')}
+        </button>
+        {result.generated_at && (
+          <span className="text-white/30 text-xs">
+            {t('final.generatedAt')}: {new Date(result.generated_at).toLocaleString()}
+          </span>
+        )}
+      </div>
+
+      <StageActions
+        onConfirm={handleConfirm}
+        confirmLabel={t('final.confirmPlan')}
+        showSkip={false}
+        showForward={false}
+        transitioning={transitioning}
+      />
     </StageCard>
   )
+}
+
+// ── Tiny markdown renderer ────────────────────────────────────────────────────
+// Handles the subset Claude emits for the itinerary: #/##/### headings, bold,
+// bullet lists, tables (pipe syntax), and paragraphs. Intentionally small — a
+// full markdown dependency is a Track-4 polish, not a correctness need.
+function Markdown({ text }) {
+  const blocks = []
+  const lines = (text || '').split('\n')
+  let i = 0
+  let key = 0
+
+  const inline = (s) =>
+    s.split(/(\*\*[^*]+\*\*)/g).map((part, k) =>
+      part.startsWith('**') && part.endsWith('**') ? (
+        <strong key={k} className="text-white">{part.slice(2, -2)}</strong>
+      ) : (
+        <React.Fragment key={k}>{part}</React.Fragment>
+      )
+    )
+
+  while (i < lines.length) {
+    const line = lines[i]
+
+    if (/^#{1,3}\s/.test(line)) {
+      const level = line.match(/^#+/)[0].length
+      const content = line.replace(/^#+\s/, '')
+      const size = level === 1 ? 'text-lg' : level === 2 ? 'text-base' : 'text-sm'
+      blocks.push(
+        <h3 key={key++} className={`${size} font-semibold text-white mt-4 mb-2 first:mt-0`}>
+          {inline(content)}
+        </h3>
+      )
+      i++
+      continue
+    }
+
+    // Table: a header row followed by a |---| separator
+    if (line.includes('|') && lines[i + 1] && /^\s*\|?[\s:|-]+\|?\s*$/.test(lines[i + 1])) {
+      const rows = []
+      const header = line
+      i += 2 // skip header + separator
+      while (i < lines.length && lines[i].includes('|')) {
+        rows.push(lines[i]); i++
+      }
+      const cells = (r) => r.split('|').map((c) => c.trim()).filter((c, idx, arr) => !(idx === 0 && c === '') && !(idx === arr.length - 1 && c === ''))
+      blocks.push(
+        <table key={key++} className="w-full text-xs my-3 border-collapse">
+          <thead>
+            <tr>{cells(header).map((c, k) => (
+              <th key={k} className="text-left text-white/70 font-semibold py-1 pr-4 border-b border-white/15">{inline(c)}</th>
+            ))}</tr>
+          </thead>
+          <tbody>{rows.map((r, k) => (
+            <tr key={k}>{cells(r).map((c, ck) => (
+              <td key={ck} className="text-white/60 py-1 pr-4 border-b border-white/5">{inline(c)}</td>
+            ))}</tr>
+          ))}</tbody>
+        </table>
+      )
+      continue
+    }
+
+    if (/^\s*[-*]\s/.test(line)) {
+      const items = []
+      while (i < lines.length && /^\s*[-*]\s/.test(lines[i])) {
+        items.push(lines[i].replace(/^\s*[-*]\s/, '')); i++
+      }
+      blocks.push(
+        <ul key={key++} className="list-disc list-inside space-y-1 my-2">
+          {items.map((it, k) => (
+            <li key={k} className="text-white/65 text-sm">{inline(it)}</li>
+          ))}
+        </ul>
+      )
+      continue
+    }
+
+    if (line.trim() === '') { i++; continue }
+
+    blocks.push(
+      <p key={key++} className="text-white/65 text-sm leading-relaxed my-2">{inline(line)}</p>
+    )
+    i++
+  }
+
+  return <div>{blocks}</div>
 }

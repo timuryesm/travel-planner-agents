@@ -37,6 +37,7 @@ from src.api.routes.auth import router as auth_router
 from src.api.routes.trips import router as trips_router
 from src.api.routes.stage_options import router as stage_options_router
 from src.api.routes import weather
+from src.api.routes import assemble
 
 
 # ── Startup / shutdown ────────────────────────────────────────────────────────
@@ -111,6 +112,7 @@ app.include_router(auth_router)
 app.include_router(trips_router)
 app.include_router(stage_options_router)
 app.include_router(weather.router)
+app.include_router(assemble.router)
 
 
 # ── Health check ──────────────────────────────────────────────────────────────
