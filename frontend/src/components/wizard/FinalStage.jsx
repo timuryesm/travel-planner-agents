@@ -37,11 +37,11 @@ export default function FinalStage({ commit, commitData, transitioning }) {
   const [loading, setLoading] = useState(!saved)
   const [failed, setFailed] = useState(false)
 
-  const runAssemble = useCallback(() => {
+  const runAssemble = useCallback((force = false) => {
     let cancelled = false
     setLoading(true)
     setFailed(false)
-    assembleTrip(trip.id)
+    assembleTrip(trip.id, { force })
       .then((r) => { if (!cancelled) setResult(r) })
       .catch(() => { if (!cancelled) setFailed(true) })
       .finally(() => { if (!cancelled) setLoading(false) })
@@ -82,7 +82,7 @@ export default function FinalStage({ commit, commitData, transitioning }) {
         <div className="py-12 text-center">
           <p className="text-white/60 text-sm mb-4">{t('final.assembleFailed')}</p>
           <button
-            onClick={runAssemble}
+            onClick={() => runAssemble(true)}
             className="text-sm hover:underline"
             style={{ color: '#2dd4bf' }}
           >
@@ -133,7 +133,7 @@ export default function FinalStage({ commit, commitData, transitioning }) {
 
       <div className="flex items-center gap-4 mb-2">
         <button
-          onClick={runAssemble}
+          onClick={() => runAssemble(true)}
           disabled={transitioning}
           className="text-sm hover:underline"
           style={{ color: '#2dd4bf', opacity: transitioning ? 0.5 : 1 }}

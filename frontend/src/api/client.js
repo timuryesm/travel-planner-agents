@@ -199,22 +199,37 @@ export function getTrip(tripId) {
   return request(`/trips/${tripId}`, { method: 'GET' })
 }
 
-// ── Assembly endpoint ─────────────────────────────────────────────────────────
-// POST /trips/{id}/assemble → { itinerary_markdown, budget, generated_at }
-// Generate-only: produces the itinerary and budget from committed choices and
-// returns them WITHOUT saving. FinalStage commits the result separately, which
-// is what persists it as the final commit. Not cached — Regenerate is meant to
-// re-run it, and it's one call per explicit user action.
-export function assembleTrip(tripId) {
-  return request(`/trips/${tripId}/assemble`, { method: 'POST' })
+// ── Weather + assembly endpoints ──────────────────────────────────────────────
+// React 18 StrictMode double-invokes effects in dev, so a stage that fetches on
+// mount fires twice. For weather that's a wasted geocode+HTTP; for assembly it's
+// TWO 4k-token Claude calls per mount — real quota. We dedupe the in-flight
+// promise per trip: the second caller joins the first request. Unlike
+// getStageOptions this is NOT a persistent cache — the entry is dropped as soon
+// as the request settles, so a later Regenerate genuinely re-runs. force=true
+// skips the dedupe entirely for a Regenerate that overlaps an in-flight call.
+
+const _weatherInflight = new Map()   // tripId → Promise
+const _assembleInflight = new Map()  // tripId → Promise
+
+// GET /trips/{id}/weather → { city, forecast_by_day, packing_tips, is_seasonal }
+export function getWeather(tripId) {
+  if (_weatherInflight.has(tripId)) return _weatherInflight.get(tripId)
+  const p = request(`/trips/${tripId}/weather`, { method: 'GET' })
+    .finally(() => _weatherInflight.delete(tripId))
+  _weatherInflight.set(tripId, p)
+  return p
 }
 
-// ── Weather endpoint ──────────────────────────────────────────────────────────
-// GET /trips/{id}/weather → { city, forecast_by_day, packing_tips, is_seasonal }
-// forecast_by_day maps "YYYY-MM-DD" → a human line. is_seasonal is true when the
-// trip is too far out for a live forecast and the lines are last year's proxy.
-export function getWeather(tripId) {
-  return request(`/trips/${tripId}/weather`, { method: 'GET' })
+// POST /trips/{id}/assemble → { itinerary_markdown, budget, generated_at }
+// Generate-only: returns the itinerary without saving; FinalStage commits it
+// separately. Deduped so StrictMode's double-mount is one call; force=true is
+// how Regenerate guarantees a fresh generation even if one is somehow in flight.
+export function assembleTrip(tripId, { force = false } = {}) {
+  if (!force && _assembleInflight.has(tripId)) return _assembleInflight.get(tripId)
+  const p = request(`/trips/${tripId}/assemble`, { method: 'POST' })
+    .finally(() => _assembleInflight.delete(tripId))
+  _assembleInflight.set(tripId, p)
+  return p
 }
 
 // POST /trips/{id}/transition  → TripDetailResponse
