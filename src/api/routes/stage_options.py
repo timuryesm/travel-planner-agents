@@ -71,8 +71,9 @@ _COUNTRY_STAGES = {"city"}
 # Both are trip-level under hub-and-spoke: one flight, one hotel, per trip.
 _HUB_STAGES = {"flights", "accommodation"}
 
-# Stages targeting one stop. activities is the only stage that repeats per city.
-_STOP_STAGES = {"activities"}
+# Stages targeting one stop. activities is per-city; intercity is per-SPOKE
+# (how to reach that spoke from the hub), so both come in via stop_index.
+_STOP_STAGES = {"activities", "intercity"}
 
 
 @router.post(

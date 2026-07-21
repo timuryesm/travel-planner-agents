@@ -131,6 +131,16 @@
     "removeSpoke": "Remove",
     "regenerate": "Show other cities"
   },
+  "intercity": {
+    "title": "Day trips",
+    "subtitle": "How you'll reach each city, and when.",
+    "windowHint": "Day trips must fall inside your trip — not your arrival or departure day.",
+    "dayTripTo": "Day trip to",
+    "travelDate": "Go",
+    "returnDate": "Back",
+    "eachWay": "each way",
+    "source": "source"
+  },
   "flights": {
     "title": "Choose your flight",
     "subtitle": "Options for {{city}}",

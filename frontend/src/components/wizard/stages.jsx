@@ -13,6 +13,7 @@
 export { default as SetupStage }         from './SetupStage'
 export { default as CountryStage }       from './CountryStage'
 export { default as CityStage }          from './CityStage'
+export { default as IntercityStage } from './IntercityStage'
 export { default as FlightsStage }       from './FlightsStage'
 export { default as AccommodationStage } from './AccommodationStage'
 export { default as ActivitiesStage }    from './ActivitiesStage'

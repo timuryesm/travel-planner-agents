@@ -10,6 +10,7 @@ from src.agents.hotel_agent import HotelAgent
 from src.agents.activities_agent import ActivitiesAgent
 from src.agents.country_agent import CountryAgent
 from src.agents.city_agent import CityAgent
+from src.agents.intercity_agent import IntercityAgent
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -202,6 +203,28 @@ def accommodation_options(ctx: OptionsContext) -> list[dict]:
     return [h.model_dump() for h in (plan.hotel_options or [])]
 
 
+def intercity_options(ctx: OptionsContext) -> list[dict]:
+    """
+    Ways to reach ONE spoke city from the hub, for a day trip.
+ 
+    Stop-targeted like activities: the route passes the spoke via stop_index,
+    _build_context resolves it to target_city, and the agent is called once per
+    spoke. The synthetic request's destination is the HUB (where you travel
+    FROM); the spoke is passed to the agent constructor (where you travel TO) —
+    two different questions, same split as CityAgent's country-vs-preference.
+ 
+    Degrades to [] on failure like activities: IntercityAgent has its own
+    fallback routes, so a crash is a thinner list, not a dead stage.
+    """
+    req = _synthetic_request(ctx, destination=ctx.hub_city or "")
+    plan = TravelPlan(request=req)
+    plan = IntercityAgent(
+        spoke_city=ctx.target_city or "",
+        limit=ctx.limit,
+    ).safe_run(plan)
+    return [o.model_dump() for o in (plan.intercity_options or [])]
+
+
 def activities_options(ctx: OptionsContext) -> list[dict]:
     """
     Things to do in one city — the only stage that repeats per stop.
@@ -235,4 +258,5 @@ STAGE_FETCHERS: dict[str, Callable[[OptionsContext], list[dict]]] = {
     "flights": flight_options,
     "accommodation": accommodation_options,
     "activities": activities_options,
+    "intercity": intercity_options,
 }

@@ -131,6 +131,16 @@
     "removeSpoke": "Retirer",
     "regenerate": "Voir d'autres villes"
   },
+  "intercity": {
+    "title": "Excursions",
+    "subtitle": "Comment rejoindre chaque ville, et quand.",
+    "windowHint": "Les excursions doivent tomber pendant votre séjour — ni le jour d'arrivée ni celui du départ.",
+    "dayTripTo": "Excursion à",
+    "travelDate": "Aller",
+    "returnDate": "Retour",
+    "eachWay": "aller simple",
+    "source": "source"
+  },
   "flights": {
     "title": "Choisissez votre vol",
     "subtitle": "Options pour {{city}}",
