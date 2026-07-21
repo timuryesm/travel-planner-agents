@@ -120,7 +120,16 @@
     "applyPreference": "Appliquer",
     "hubHint": "C'est votre base pour tout le séjour — les excursions viendront plus tard.",
     "addCity": "Ajouter une ville",
-    "moreOptions": "Voir d'autres villes"
+    "moreOptions": "Voir d'autres villes",
+    "hub": "Base", 
+    "dayTrip": "Excursion", 
+    "pickHub": "Choisissez votre ville de base", 
+    "pickSpoke": "Choisissez une ville d'excursion", 
+    "confirmHub": "Définir comme base", 
+    "confirmSpoke": "Ajouter l'excursion", 
+    "changeHub": "Changer", 
+    "removeSpoke": "Retirer",
+    "regenerate": "Voir d'autres villes"
   },
   "flights": {
     "title": "Choisissez votre vol",

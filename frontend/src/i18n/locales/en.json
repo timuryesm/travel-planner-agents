@@ -120,7 +120,16 @@
     "applyPreference": "Apply",
     "hubHint": "This is your base for the whole trip — day trips come later.",
     "addCity": "Add another city",
-    "moreOptions": "Show other cities"
+    "moreOptions": "Show other cities",
+    "hub": "Hub", 
+    "dayTrip": "Day trip", 
+    "pickHub": "Choose your base city", 
+    "pickSpoke": "Choose a day-trip city", 
+    "confirmHub": "Set as hub", 
+    "confirmSpoke": "Add day trip", 
+    "changeHub": "Change", 
+    "removeSpoke": "Remove",
+    "regenerate": "Show other cities"
   },
   "flights": {
     "title": "Choose your flight",
