@@ -214,6 +214,23 @@ Do not invent details that aren't in the data."""
         # exact structure to render rather than asking it to re-distribute.
         # The CLI path has no day_by_day and falls through to the instruction
         # below, which asks for a fresh distribution.
+        # ── Day trips (multi-city) ───────────────────────────────────────
+        segments = getattr(plan, "selected_intercity", None)
+        if segments:
+            lines.append("DAY TRIPS FROM THE HUB:")
+            for seg in segments:
+                same = seg.travel_date == seg.return_date
+                when = (
+                    f"{seg.travel_date}" if same
+                    else f"{seg.travel_date} to {seg.return_date}"
+                )
+                opt = seg.selected
+                lines.append(
+                    f"  - {seg.city} ({when}) by {opt.mode}: {opt.description} "
+                    f"(~${opt.cost_usd:,.0f}/person round trip, {opt.duration_hours}h each way)"
+                )
+            lines.append("")
+
         day_by_day = getattr(plan, "day_by_day", None)
         if day_by_day:
             lines.append("PLANNED DAYS (already arranged — render these as-is):")

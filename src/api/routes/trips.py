@@ -16,7 +16,7 @@ Response schemas are defined here because they are used nowhere else.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, date
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -60,6 +60,11 @@ class StopResponse(BaseModel):
     stop_index: int
     city: str
     country: str
+    # Hub (index 0) carries the trip window; spokes carry their day-trip dates
+    # once the intercity commit mirrors them onto the row (NULL before that).
+    # The daily plan reads these to decide which city each day is in.
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
     stage_commits: list[CommitResponse]
 
 
@@ -118,6 +123,8 @@ def _trip_detail(trip: Trip) -> TripDetailResponse:
                 stop_index=s.stop_index,
                 city=s.city,
                 country=s.country,
+                start_date=s.start_date,
+                end_date=s.end_date,
                 stage_commits=[
                     _commit(c)
                     for c in sorted(

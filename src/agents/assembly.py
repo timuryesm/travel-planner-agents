@@ -29,6 +29,7 @@ from typing import Any, Optional
 from src.db.models import Trip
 from src.state.enums import StopLevelStage, TripLevelStage
 from src.state.schemas import (
+    IntercityCommitData,
     AccommodationCommitData,
     ActivitiesCommitData,
     DailyPlanCommitData,
@@ -126,11 +127,22 @@ def build_plan_from_commits(trip: Trip) -> TravelPlan:
     if hotel and hotel.get("selected"):
         plan.selected_hotel = AccommodationCommitData.model_validate(hotel).selected
 
-    # Activities — stop-level. SINGLE-CITY: only the hub (index 0). Multi-city
-    # concatenates every stop's chosen list in stop order; that's step 19.
-    acts = _stop_commit(trip, 0, StopLevelStage.activities.value)
-    if acts:
-        plan.activities = ActivitiesCommitData.model_validate(acts).chosen or []
+    # Activities — stop-level, gathered across EVERY stop in stop order: the hub
+    # first, then each spoke. Multi-city (step 19): a spoke's activities are the
+    # ones you do on its day trip, and they belong in the plan and the budget
+    # just like the hub's. Single-city: this is just the hub, unchanged.
+    all_activities = []
+    for stop in sorted(trip.stops, key=lambda s: s.stop_index):
+        sc = _stop_commit(trip, stop.stop_index, StopLevelStage.activities.value)
+        if sc:
+            all_activities.extend(ActivitiesCommitData.model_validate(sc).chosen or [])
+    plan.activities = all_activities
+
+    # Intercity — the chosen day-trip segments (mode + dates per spoke). Set so
+    # the orchestrator can render a day-trips section. None on single-city.
+    inter = _trip_commit(trip, TripLevelStage.intercity.value)
+    if inter:
+        plan.selected_intercity = IntercityCommitData.model_validate(inter).segments
 
     # Daily plan — the authoritative day-by-day the user may have arranged.
     # Assembly renders THIS rather than re-distributing activities, so the order
@@ -167,25 +179,39 @@ def wizard_costs_from_commits(trip: Trip) -> dict[str, Any]:
         # Prefer the committed stay length over the trip window.
         nights = (acc.check_out - acc.check_in).days
 
+    # Activities across every stop (hub + spokes), same as build_plan_from_commits.
     activities_usd = 0.0
-    acts = _stop_commit(trip, 0, StopLevelStage.activities.value)
-    if acts:
-        chosen = ActivitiesCommitData.model_validate(acts).chosen or []
-        activities_usd = sum(a.estimated_cost_usd for a in chosen)
+    any_activities = False
+    for stop in trip.stops:
+        sc = _stop_commit(trip, stop.stop_index, StopLevelStage.activities.value)
+        if sc:
+            chosen = ActivitiesCommitData.model_validate(sc).chosen or []
+            if chosen:
+                any_activities = True
+            activities_usd += sum(a.estimated_cost_usd for a in chosen)
+
+    # Intercity — the day trips. cost_usd is per person, round trip, so it scales
+    # with travelers, same as flights. Absent (0) on single-city trips, where
+    # there is no intercity commit.
+    intercity_usd = 0.0
+    inter = _trip_commit(trip, TripLevelStage.intercity.value)
+    if inter:
+        segments = IntercityCommitData.model_validate(inter).segments
+        intercity_usd = sum(seg.selected.cost_usd for seg in segments) * setup.num_travelers
 
     missing: list[str] = []
     if flights_usd == 0.0 and not (flights and flights.get("selected")):
         missing.append("flights")
     if not (hotel and hotel.get("selected")):
         missing.append("accommodation")
-    if not acts or not ActivitiesCommitData.model_validate(acts).chosen:
+    if not any_activities:
         missing.append("activities")
 
     return {
         "flights_usd": flights_usd,
         "hotel_usd": hotel_usd,
         "activities_usd": activities_usd,
-        "intercity_usd": 0.0,          # single-city; Track 2 fills this
+        "intercity_usd": intercity_usd,   # real day-trip cost; 0 on single-city
         "budget_usd": req_budget(setup),
         "nights": nights,
         "travelers": setup.num_travelers,

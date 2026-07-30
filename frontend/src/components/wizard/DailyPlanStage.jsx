@@ -16,12 +16,13 @@ import useTripStore from '../../store/tripStore'
 // trap that white-screened flights). The plan is built from the hub stop's
 // committed activities + the trip dates.
 //
-// SINGLE-CITY SCOPE. Track 1 has one city, the hub, so every day is in the hub
-// and activities come from the hub's activities commit. Multi-city — days that
-// move between hub and spokes, activities pulled from each spoke's commit — is
-// step 19. This version names the hub city on every DayPlan (the schema now
-// requires `city`), which is exactly right for one city and the honest floor
-// for more.
+// MULTI-CITY (step 19): each day's city is decided by the spoke date ranges.
+// A spoke stop carries start_date/end_date (its day-trip dates, mirrored from
+// the intercity commit onto the row and now exposed by the API). For each day
+// of the trip, if the date falls inside a spoke's range, that day is a day trip
+// to that spoke — its city, its activities. Otherwise it's a hub day — hub city,
+// hub activities. Single-city trips have no spokes, so every day is the hub,
+// exactly as before.
 //
 // The free-text edit box is captured but not yet AI-applied; real editing lands
 // in Phase D. What's committed is the current day_by_day list.
@@ -43,7 +44,7 @@ function addDays(iso, n) {
   return d.toISOString().slice(0, 10)
 }
 
-// Read the chosen activities for this stop from the trip object
+// Read the chosen activities for one stop from the trip object.
 function activitiesForStop(stop) {
   if (!stop) return []
   const commit = stop.stage_commits?.find((c) => c.stage === 'activities')
@@ -51,20 +52,57 @@ function activitiesForStop(stop) {
   return Array.isArray(chosen) ? chosen : []
 }
 
-// Distribute activities across the available days (round-robin, ~2 per day).
-// Each DayPlan carries the city (schema requires it) and a weather_line looked
-// up by date from the forecast map — empty string when the date isn't covered,
-// which the render turns into a neutral dash rather than inventing a line.
-function generatePlan(activities, startDate, numDays, city, forecastByDay) {
+// Which stop is a given ISO date in? A spoke if the date falls inside its
+// [start_date, end_date] (its day-trip window); otherwise the hub. Spokes are
+// checked first so a day trip wins over the hub's default coverage.
+function stopForDate(iso, hub, spokes) {
+  for (const sp of spokes) {
+    if (sp.start_date && sp.end_date && iso >= sp.start_date && iso <= sp.end_date) {
+      return sp
+    }
+  }
+  return hub
+}
+
+// Build the day-by-day plan. For each day: resolve the day's stop (hub or a
+// spoke whose date-range covers it), label the day with that stop's city, and
+// draw from that stop's activities. Activities are consumed per city with a
+// cursor, so a city's chosen list is distributed across only the days spent
+// there — a spoke's activities land on the spoke day(s), the hub's on hub days.
+function generatePlan(startDate, numDays, hub, spokes, forecastByDay) {
   const days = []
-  const perDay = Math.max(1, Math.ceil(activities.length / Math.max(1, numDays)))
+
+  // Per-stop activity pool + a cursor, so each city's activities are handed out
+  // in order across its own days without repeating across cities.
+  const pool = {}
+  const cursor = {}
+  const allStops = [hub, ...spokes].filter(Boolean)
+  for (const st of allStops) {
+    pool[st.stop_index] = activitiesForStop(st)
+    cursor[st.stop_index] = 0
+  }
+
+  // Count how many days each stop gets, to size the per-day slice sensibly.
+  const dayStops = []
+  for (let d = 0; d < numDays; d++) {
+    const iso = startDate ? addDays(startDate, d) : null
+    dayStops.push(iso ? stopForDate(iso, hub, spokes) : hub)
+  }
+  const daysPerStop = {}
+  for (const st of dayStops) daysPerStop[st.stop_index] = (daysPerStop[st.stop_index] || 0) + 1
 
   for (let d = 0; d < numDays; d++) {
-    const slice = activities.slice(d * perDay, (d + 1) * perDay)
     const iso = startDate ? addDays(startDate, d) : null
+    const st = dayStops[d]
+    const idx = st.stop_index
+    const acts = pool[idx] || []
+    const perDay = Math.max(1, Math.ceil(acts.length / Math.max(1, daysPerStop[idx] || 1)))
+    const slice = acts.slice(cursor[idx], cursor[idx] + perDay)
+    cursor[idx] += perDay
+
     days.push({
       date: iso ?? `Day ${d + 1}`,
-      city,
+      city: st.city,
       weather_line: (iso && forecastByDay[iso]) || '',
       activity_names: slice.map((a) => a.name),
     })
@@ -87,10 +125,17 @@ export default function DailyPlanStage({ commit, skip, forward, commitData, setu
   const stop = hubStop()
   const city = stop?.city ?? ''
 
-  const activities = useMemo(() => activitiesForStop(stop), [stop])
-  const numDays = nightsBetween(setupData?.departure_date, setupData?.return_date)
-
   const trip = useTripStore((s) => s.trip)
+
+  // Hub (index 0) + spokes (1..N), sorted. Spokes carry their day-trip dates on
+  // start_date/end_date; the plan builder uses them to place each day.
+  const spokes = useMemo(
+    () => (trip?.stops ?? [])
+      .filter((s) => s.stop_index >= 1)
+      .sort((a, b) => a.stop_index - b.stop_index),
+    [trip]
+  )
+  const numDays = nightsBetween(setupData?.departure_date, setupData?.return_date)
 
   // Revisiting a committed plan keeps it verbatim — the user may have edited it,
   // and its weather lines were real when generated. A fresh plan waits for the
@@ -107,14 +152,14 @@ export default function DailyPlanStage({ commit, skip, forward, commitData, setu
     getWeather(trip.id)
       .then((w) => {
         if (cancelled) return
-        setPlan(generatePlan(activities, setupData?.departure_date, numDays, city, w.forecast_by_day || {}))
+        setPlan(generatePlan(setupData?.departure_date, numDays, stop, spokes, w.forecast_by_day || {}))
         setWeatherState(w.is_seasonal ? 'seasonal' : 'ready')
       })
       .catch(() => {
         if (cancelled) return
         // No forecast — build the plan anyway with blank weather lines. The
         // stage still works; the days just don't show a forecast.
-        setPlan(generatePlan(activities, setupData?.departure_date, numDays, city, {}))
+        setPlan(generatePlan(setupData?.departure_date, numDays, stop, spokes, {}))
         setWeatherState('failed')
       })
     return () => { cancelled = true }

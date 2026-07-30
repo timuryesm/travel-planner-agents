@@ -210,6 +210,13 @@ class TravelPlan(BaseModel):
     proposed_countries: Optional[list[Country]] = None
     proposed_cities: Optional[list[City]] = None
     intercity_options: Optional[list[IntercityOption]] = None
+    
+    # The CHOSEN day-trip segments (mode + dates per spoke), set by assembly from
+    # the intercity commit. Distinct from intercity_options (the candidates the
+    # agent proposed). Typed loosely: the concrete IntercitySegment lives in
+    # schemas.py, which imports FROM this module, so annotating with it would be
+    # circular. The orchestrator reads attributes off each item, not the type.
+    selected_intercity: Optional[list] = None
 
     # The arranged day-by-day plan. The CLI pipeline leaves this None and lets
     # assemble_itinerary distribute activities; the wizard fills it from the
