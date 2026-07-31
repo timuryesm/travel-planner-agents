@@ -21,7 +21,7 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.encoders import jsonable_encoder
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.jwt import get_current_user
@@ -77,6 +77,14 @@ class TripSummaryResponse(BaseModel):
     multi_city: bool
     created_at: datetime
     updated_at: datetime
+    # Enough to identify a trip in the plan list without loading its commits.
+    # Derived from the Stop rows: they already carry city and country, and the
+    # hub (index 0) carries the trip window. Without these the list could only
+    # show a UUID and a timestamp, which is not something you can pick from.
+    country: Optional[str] = None
+    cities: list[str] = Field(default_factory=list)
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
 
 
 class TripDetailResponse(TripSummaryResponse):
@@ -139,6 +147,10 @@ def _trip_detail(trip: Trip) -> TripDetailResponse:
 
 
 def _trip_summary(trip: Trip) -> TripSummaryResponse:
+    # Stops in wizard order: [0] is the hub, the rest are spokes. A trip still
+    # on setup/country has none yet — the list shows it as untitled.
+    stops = sorted(trip.stops, key=lambda s: s.stop_index)
+    hub = stops[0] if stops else None
     return TripSummaryResponse(
         id=trip.id,
         status=trip.status,
@@ -147,6 +159,10 @@ def _trip_summary(trip: Trip) -> TripSummaryResponse:
         multi_city=trip.multi_city,
         created_at=trip.created_at,
         updated_at=trip.updated_at,
+        country=hub.country if hub else None,
+        cities=[s.city for s in stops],
+        start_date=hub.start_date if hub else None,
+        end_date=hub.end_date if hub else None,
     )
 
 

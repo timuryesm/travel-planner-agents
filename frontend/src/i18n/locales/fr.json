@@ -57,13 +57,27 @@
       "unknown": "Une erreur s'est produite. Veuillez réessayer."
     }
   },
+  "plans": {
+    "title": "Vos voyages",
+    "subtitle": "Reprenez où vous en étiez, ou commencez un nouveau voyage.",
+    "untitled": "Voyage sans titre",
+    "empty": "Aucun voyage",
+    "emptyHint": "Planifiez votre premier voyage.",
+    "resume": "Reprendre",
+    "view": "Voir",
+    "at": "Étape",
+    "inProgress": "En cours",
+    "complete": "Terminé",
+    "multiCity": "Multi-villes"
+  },
   "sidebar": {
     "tripSetup": "Préparation du voyage",
     "logistics": "Transport et hébergement",
     "finishingUp": "Finalisation",
     "yourTrips": "Vos voyages",
     "newTrip": "Nouveau voyage",
-    "stop": "Étape"
+    "stop": "Étape",
+    "allPlans": "Tous les voyages"
   },
   "stages": {
     "setup": "Les bases",

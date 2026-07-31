@@ -125,6 +125,7 @@ async def list_trips(
     result = await db.execute(
         select(Trip)
         .where(Trip.user_id == user_id)
+        .options(selectinload(Trip.stops))
         .order_by(Trip.created_at.desc())
     )
     return list(result.scalars().all())

@@ -21,6 +21,8 @@ import * as api from '../api/client'
 //   skip()            — SKIP transition
 //   forward()         — FORWARD transition
 //   back(stage, idx)  — BACK transition (cascade-invalidate)
+//   fetchTrips()      — GET /trips/  (summaries for the plan list)
+//   closeTrip()       — close the open trip, return to the list
 //
 // Derived selectors (computed, not stored):
 //   currentCommit()   — the commit row for the current position
@@ -49,6 +51,8 @@ export const useTripStore = create((set, get) => ({
   loading: false,
   transitioning: false,   // true while a transition request is in flight
   error: null,            // i18n key under errors.* or auth.errors.*
+  trips: [],              // TripSummaryResponse[] for the plan list
+  tripsLoading: false,
 
   // ── Internal: run an async op with loading + error handling ────────────────
   _run: async (fn, { flag = 'loading' } = {}) => {
@@ -86,11 +90,36 @@ export const useTripStore = create((set, get) => ({
     return get()._run(() => api.getTrip(tripId))
   },
 
+  // Load the user's trip summaries for the plan list. Kept separate from
+  // `trip`: the list is summaries (id, destination, status), the open trip is
+  // the full state. Fetching the list must never clobber an open trip.
+  fetchTrips: async () => {
+    set({ tripsLoading: true, error: null })
+    try {
+      const trips = await api.listTrips()
+      set({ trips, tripsLoading: false })
+      return trips
+    } catch (err) {
+      const code =
+        err?.code === 'sessionExpired' ? 'errors.sessionExpired' :
+        err?.code === 'networkError'   ? 'auth.errors.networkError' :
+                                         'errors.generic'
+      set({ error: code, tripsLoading: false })
+      throw err
+    }
+  },
+ 
+  // Close the open trip and return to the plan list. NOT a wizard action: it
+  // touches no commit and no position, it just stops showing the wizard. The
+  // trip is untouched on the server and resumes exactly where it was.
+  //
+  // Distinct from clearTrip(), which is for logout — that also drops the trips
+  // list, because the next user must not see the previous one's plans.
+  closeTrip: () => set({ trip: null, error: null }),
+
   clearTrip: () => {
-    // Drop any in-flight create too — on logout its result is unwanted, and
-    // leaving the guard set would block the next user's first trip.
     _startInFlight = null
-    set({ trip: null, error: null })
+    set({ trip: null, trips: [], error: null })
   },
 
   // ── Transitions ────────────────────────────────────────────────────────────

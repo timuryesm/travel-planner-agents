@@ -34,6 +34,9 @@ import { motion, AnimatePresence } from 'framer-motion'
 //   trip            — TripDetailResponse (current_stage, current_stop_index,
 //                     multi_city, trip_stage_commits[], stops[])
 //   onNavigateBack  — (targetStage, targetStopIndex) => void
+//   onCloseTrip     — () => void; closes the trip and returns to the plan list.
+//                     Distinct from BACK: it leaves the wizard entirely without
+//                     touching any commit.
 //
 // If trip is null (no trip loaded yet), renders just the section skeleton.
 
@@ -237,7 +240,7 @@ function BlastRadiusModal({ affectedLabels, onConfirm, onCancel }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Sidebar
 // ─────────────────────────────────────────────────────────────────────────────
-export default function Sidebar({ trip, onNavigateBack }) {
+export default function Sidebar({ trip, onNavigateBack, onCloseTrip }) {
   const { t } = useTranslation()
   const [pendingTarget, setPendingTarget] = useState(null)
 
@@ -323,6 +326,17 @@ export default function Sidebar({ trip, onNavigateBack }) {
 
   return (
     <div className="flex flex-col h-full">
+      {/* Back to the plan list. Not a wizard action — it closes the trip
+          without changing any commit, so it sits above the stage list. */}
+      {onCloseTrip && (
+        <button
+          onClick={onCloseTrip}
+          className="px-2 py-1 mb-3 text-xs text-white/45 hover:text-white/80 text-left"
+        >
+          ← {t('sidebar.allPlans')}
+        </button>
+      )}
+
       {/* App name */}
       <div className="px-2 mb-5">
         <h1 className="text-white font-semibold text-lg tracking-tight">

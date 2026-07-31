@@ -57,13 +57,27 @@
       "unknown": "Something went wrong. Please try again."
     }
   },
+  "plans": {
+    "title": "Your trips",
+    "subtitle": "Pick up where you left off, or start something new.",
+    "untitled": "Untitled trip",
+    "empty": "No trips yet",
+    "emptyHint": "Start planning your first one.",
+    "resume": "Resume",
+    "view": "View",
+    "at": "At",
+    "inProgress": "In progress",
+    "complete": "Complete",
+    "multiCity": "Multi-city"
+  },
   "sidebar": {
     "tripSetup": "Trip setup",
     "logistics": "Getting there",
     "finishingUp": "Finishing up",
     "yourTrips": "Your trips",
     "newTrip": "New trip",
-    "stop": "Stop"
+    "stop": "Stop",
+    "allPlans": "All plans"
   },
   "stages": {
     "setup": "Trip basics",

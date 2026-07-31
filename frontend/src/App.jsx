@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import useTorontoTheme from './hooks/useTorontoTheme'
 import useTripStore from './store/tripStore'
@@ -8,6 +8,7 @@ import AuthScreen from './components/auth/AuthScreen'
 import AppShell from './components/layout/AppShell'
 import Sidebar from './components/layout/Sidebar'
 import WizardRenderer from './components/wizard/WizardRenderer'
+import TripListScreen from './components/plans/TripListScreen'
 import { getToken, logout as apiLogout } from './api/client'
 
 export default function App() {
@@ -17,17 +18,13 @@ export default function App() {
   const [authed, setAuthed] = useState(() => !!getToken())
 
   const trip = useTripStore((s) => s.trip)
-  const startTrip = useTripStore((s) => s.startTrip)
   const back = useTripStore((s) => s.back)
   const clearTrip = useTripStore((s) => s.clearTrip)
+  const closeTrip = useTripStore((s) => s.closeTrip)
 
-  // Start a trip as soon as we're authenticated and none is loaded.
-  // Step 12 / Phase D can add a trip list + resume flow here instead.
-  useEffect(() => {
-    if (authed && !trip) {
-      startTrip().catch(() => { /* error surfaces via store.error */ })
-    }
-  }, [authed, trip, startTrip])
+  // No auto-create. Authenticating lands on the trip list; a trip is created
+  // only when the user asks for one. The old effect minted a trip on every
+  // login, which meant one ephemeral trip and no way back to an earlier plan.
 
   function handleLogout() {
     apiLogout()
@@ -66,10 +63,21 @@ export default function App() {
       sidebar={
         <div className="flex flex-col h-full">
           <div className="flex-1 min-h-0">
-            <Sidebar
-              trip={trip}
-              onNavigateBack={(stage, stopIndex) => back(stage, stopIndex)}
-            />
+            {trip ? (
+              <Sidebar
+                trip={trip}
+                onNavigateBack={(stage, stopIndex) => back(stage, stopIndex)}
+                onCloseTrip={closeTrip}
+              />
+            ) : (
+              // No trip open: the stage list would be an empty skeleton, so the
+              // sidebar is just the app name until one is selected.
+              <div className="px-2">
+                <h1 className="text-white font-semibold text-lg tracking-tight">
+                  {t('app.name')}
+                </h1>
+              </div>
+            )}
           </div>
           <button
             onClick={handleLogout}
@@ -80,7 +88,7 @@ export default function App() {
         </div>
       }
     >
-      <WizardRenderer />
+      {trip ? <WizardRenderer /> : <TripListScreen />}
     </AppShell>
   )
 }
