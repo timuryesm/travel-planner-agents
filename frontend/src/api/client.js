@@ -199,6 +199,11 @@ export function getTrip(tripId) {
   return request(`/trips/${tripId}`, { method: 'GET' })
 }
 
+// DELETE /trips/{id} → { deleted: id }. Irreversible; cascades server-side.
+export function deleteTrip(tripId) {
+  return request(`/trips/${tripId}`, { method: 'DELETE' })
+}
+
 // ── Weather + assembly endpoints ──────────────────────────────────────────────
 // React 18 StrictMode double-invokes effects in dev, so a stage that fetches on
 // mount fires twice. For weather that's a wasted geocode+HTTP; for assembly it's

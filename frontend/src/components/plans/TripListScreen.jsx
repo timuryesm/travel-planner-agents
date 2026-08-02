@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { motion } from 'framer-motion'
 import useTripStore from '../../store/tripStore'
@@ -18,6 +18,12 @@ import useTripStore from '../../store/tripStore'
 //
 // A trip with no stops yet (still on setup/country) has no destination to show,
 // so it falls back to "Untitled trip" plus where the wizard left off.
+//
+// Selection mode: "Select" turns the cards into toggles; one or several trips
+// can be checked and deleted together. Delete is two-step — the button arms
+// into a "really?" state and only a second click fires — because deletion
+// cascades (stops, commits, the saved itinerary) and cannot be undone.
+// Changing the selection disarms it.
 
 function fmtDate(iso) {
   if (!iso) return null
@@ -34,7 +40,7 @@ function fmtWhen(startISO, endISO) {
   return a || b || null
 }
 
-function TripCard({ trip, onOpen, t }) {
+function TripCard({ trip, onOpen, t, selectMode, selected, onToggle }) {
   const cities = trip.cities || []
   const title = cities.length
     ? cities.join(' · ')
@@ -45,14 +51,32 @@ function TripCard({ trip, onOpen, t }) {
   return (
     <motion.button
       whileHover={{ y: -2 }}
-      onClick={() => onOpen(trip.id)}
+      onClick={() => (selectMode ? onToggle(trip.id) : onOpen(trip.id))}
       className="w-full text-left rounded-xl px-5 py-4 transition-colors"
       style={{
-        background: 'rgba(255,255,255,0.05)',
-        border: '1px solid rgba(255,255,255,0.10)',
+        background: selected ? 'rgba(251,113,133,0.08)' : 'rgba(255,255,255,0.05)',
+        border: `1px solid ${selected ? 'rgba(251,113,133,0.45)' : 'rgba(255,255,255,0.10)'}`,
       }}
     >
       <div className="flex items-start justify-between gap-4">
+        {selectMode && (
+          <div
+            aria-hidden
+            style={{
+              flexShrink: 0, width: 20, height: 20, borderRadius: 6, marginTop: 2,
+              border: `2px solid ${selected ? '#fb7185' : 'rgba(255,255,255,0.3)'}`,
+              background: selected ? '#fb7185' : 'transparent',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            {selected && (
+              <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
+                <path d="M2 6 L5 9 L10 3" stroke="#0a0e1a" strokeWidth="2"
+                  strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            )}
+          </div>
+        )}
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 mb-1 flex-wrap">
             <h3 className="text-white font-semibold text-base">{title}</h3>
@@ -102,6 +126,39 @@ export default function TripListScreen() {
   const fetchTrips = useTripStore((s) => s.fetchTrips)
   const loadTrip = useTripStore((s) => s.loadTrip)
   const startTrip = useTripStore((s) => s.startTrip)
+  const deleteTrips = useTripStore((s) => s.deleteTrips)
+
+  // Selection: a Set of trip ids. armed = the delete button has been clicked
+  // once and awaits confirmation; any selection change disarms it.
+  const [selectMode, setSelectMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState(() => new Set())
+  const [armed, setArmed] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+
+  function toggleSelect(id) {
+    setArmed(false)
+    setSelectedIds((cur) => {
+      const next = new Set(cur)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  function exitSelectMode() {
+    setSelectMode(false)
+    setSelectedIds(new Set())
+    setArmed(false)
+  }
+
+  function handleDelete() {
+    if (selectedIds.size === 0) return
+    if (!armed) { setArmed(true); return }
+    setDeleting(true)
+    deleteTrips([...selectedIds])
+      .then(() => exitSelectMode())
+      .catch(() => {})
+      .finally(() => setDeleting(false))
+  }
 
   useEffect(() => {
     fetchTrips().catch(() => { /* surfaces via store.error */ })
@@ -126,13 +183,53 @@ export default function TripListScreen() {
           </h2>
           <p className="text-white/50 text-sm mt-1">{t('plans.subtitle')}</p>
         </div>
-        <button
-          onClick={newTrip}
-          className="px-4 py-2 rounded-lg text-sm font-semibold flex-shrink-0"
-          style={{ color: '#0a0e1a', background: 'linear-gradient(135deg, #2dd4bf, #38bdf8)' }}
-        >
-          + {t('sidebar.newTrip')}
-        </button>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {trips.length > 0 && (
+            selectMode ? (
+              <button
+                onClick={exitSelectMode}
+                className="px-3 py-2 rounded-lg text-sm text-white/60 hover:text-white/90"
+              >
+                {t('common.cancel')}
+              </button>
+            ) : (
+              <button
+                onClick={() => setSelectMode(true)}
+                className="px-3 py-2 rounded-lg text-sm text-white/60 hover:text-white/90"
+              >
+                {t('plans.select')}
+              </button>
+            )
+          )}
+          {!selectMode && (
+            <button
+              onClick={newTrip}
+              className="px-4 py-2 rounded-lg text-sm font-semibold"
+              style={{ color: '#0a0e1a', background: 'linear-gradient(135deg, #2dd4bf, #38bdf8)' }}
+            >
+              + {t('sidebar.newTrip')}
+            </button>
+          )}
+          {selectMode && (
+            <button
+              onClick={handleDelete}
+              disabled={selectedIds.size === 0 || deleting}
+              className="px-4 py-2 rounded-lg text-sm font-semibold"
+              style={{
+                color: '#fff',
+                background: armed ? '#e11d48' : 'rgba(251,113,133,0.25)',
+                border: '1px solid rgba(251,113,133,0.5)',
+                opacity: selectedIds.size === 0 ? 0.4 : 1,
+              }}
+            >
+              {deleting
+                ? t('common.loading')
+                : armed
+                  ? t('plans.confirmDelete', { count: selectedIds.size })
+                  : t('plans.delete', { count: selectedIds.size })}
+            </button>
+          )}
+        </div>
       </div>
 
       {tripsLoading ? (
@@ -154,7 +251,15 @@ export default function TripListScreen() {
       ) : (
         <div className="flex flex-col gap-3">
           {trips.map((tr) => (
-            <TripCard key={tr.id} trip={tr} onOpen={openTrip} t={t} />
+            <TripCard
+              key={tr.id}
+              trip={tr}
+              onOpen={openTrip}
+              t={t}
+              selectMode={selectMode}
+              selected={selectedIds.has(tr.id)}
+              onToggle={toggleSelect}
+            />
           ))}
         </div>
       )}

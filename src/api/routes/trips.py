@@ -27,7 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.auth.jwt import get_current_user
 from src.db.base import get_db
 from src.db.models import StopStageCommit, Trip, TripStageCommit, User
-from src.db.trip_repository import create_trip, list_trips, load_trip
+from src.db.trip_repository import create_trip, delete_trip, list_trips, load_trip
 from src.state.enums import StopLevelStage, TripLevelStage
 from src.state.transition import (
     CommitValidationError,
@@ -86,6 +86,8 @@ class TripSummaryResponse(BaseModel):
     start_date: Optional[date] = None
     end_date: Optional[date] = None
 
+class DeleteTripResponse(BaseModel):
+    deleted: uuid.UUID
 
 class TripDetailResponse(TripSummaryResponse):
     """Full wizard state — position, all trip-level commits, all stops."""
@@ -254,6 +256,35 @@ async def get_trip_route(
     trip = await _owned_trip(trip_id, current_user, db)
     return _trip_detail(trip)
 
+
+@router.delete(
+    "/{trip_id}",
+    response_model=DeleteTripResponse,
+    summary="Delete a trip and everything under it",
+)
+async def delete_trip_route(
+    trip_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> DeleteTripResponse:
+    """
+    Irreversible: cascades to stops, every commit, and the saved itinerary.
+ 
+    Returns 200 with the id rather than a 204: the frontend's request()
+    helper parses JSON on every response, and an empty 204 body would need
+    special-casing there for zero benefit.
+ 
+    Another user's trip is a 404, not a 403 — same rule as everywhere else:
+    the API doesn't confirm the existence of resources you can't see.
+    """
+    trip = await load_trip(trip_id, db)
+    if trip is None or trip.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Trip not found.",
+        )
+    await delete_trip(trip, db)
+    return DeleteTripResponse(deleted=trip_id)
 
 # ── POST /trips/{trip_id}/transition ─────────────────────────────────────────
 

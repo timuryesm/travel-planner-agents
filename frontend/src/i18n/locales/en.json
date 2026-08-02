@@ -68,7 +68,10 @@
     "at": "At",
     "inProgress": "In progress",
     "complete": "Complete",
-    "multiCity": "Multi-city"
+    "multiCity": "Multi-city",
+    "select": "Select", 
+    "delete": "Delete ({{count}})", 
+    "confirmDelete": "Really delete ({{count}})?"
   },
   "sidebar": {
     "tripSetup": "Trip setup",

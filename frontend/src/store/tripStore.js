@@ -108,6 +108,22 @@ export const useTripStore = create((set, get) => ({
       throw err
     }
   },
+
+  // Delete one or several trips, then refresh the list. Parallel per-id calls
+  // rather than a bulk endpoint — N is small and the semantics stay standard.
+  // allSettled, not all: one failed delete (e.g. already gone) shouldn't stop
+  // the rest, and the refetch shows the true remaining state either way.
+  deleteTrips: async (ids) => {
+    set({ tripsLoading: true, error: null })
+    try {
+      await Promise.allSettled(ids.map((id) => api.deleteTrip(id)))
+      // If the open trip was among them, close it — it no longer exists.
+      const open = get().trip
+      if (open && ids.includes(open.id)) set({ trip: null })
+    } finally {
+      await get().fetchTrips().catch(() => {})
+    }
+  },
  
   // Close the open trip and return to the plan list. NOT a wizard action: it
   // touches no commit and no position, it just stops showing the wizard. The

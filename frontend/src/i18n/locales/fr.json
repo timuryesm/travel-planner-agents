@@ -68,7 +68,10 @@
     "at": "Étape",
     "inProgress": "En cours",
     "complete": "Terminé",
-    "multiCity": "Multi-villes"
+    "multiCity": "Multi-villes",
+    "select": "Sélectionner", 
+    "delete": "Supprimer ({{count}})", 
+    "confirmDelete": "Vraiment supprimer ({{count}}) ?"
   },
   "sidebar": {
     "tripSetup": "Préparation du voyage",

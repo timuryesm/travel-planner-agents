@@ -68,7 +68,10 @@
     "at": "Этап",
     "inProgress": "В процессе",
     "complete": "Завершено",
-    "multiCity": "Несколько городов"
+    "multiCity": "Несколько городов",
+    "select": "Выбрать", 
+    "delete": "Удалить ({{count}})", 
+    "confirmDelete": "Точно удалить ({{count}})?"
   },
   "sidebar": {
     "tripSetup": "Настройка поездки",

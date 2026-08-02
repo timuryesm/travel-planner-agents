@@ -308,3 +308,14 @@ async def save_commit(
     """
     db.add(commit)   # no-op if already tracked; ensures new objects are added
     await db.flush()
+
+async def delete_trip(trip: Trip, db: AsyncSession) -> None:
+    """
+    Delete a trip and everything under it.
+ 
+    The schema cascade-deletes on every FK, so removing the Trip row takes its
+    stops, all commit rows, and the saved itinerary with it. Irreversible —
+    ownership is the route's job; this just executes.
+    """
+    await db.delete(trip)
+    await db.commit()
