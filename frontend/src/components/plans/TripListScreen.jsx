@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { motion } from 'framer-motion'
 import useTripStore from '../../store/tripStore'
+import { downloadTripExport } from '../../api/client'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TripListScreen — "your plans", shown when no trip is open
@@ -40,7 +41,7 @@ function fmtWhen(startISO, endISO) {
   return a || b || null
 }
 
-function TripCard({ trip, onOpen, t, selectMode, selected, onToggle }) {
+function TripCard({ trip, onOpen, t, selectMode, selected, onToggle, onDownload }) {
   const cities = trip.cities || []
   const title = cities.length
     ? cities.join(' · ')
@@ -113,6 +114,17 @@ function TripCard({ trip, onOpen, t, selectMode, selected, onToggle }) {
           <span className="text-xs" style={{ color: '#2dd4bf' }}>
             {isComplete ? t('plans.view') : t('plans.resume')} →
           </span>
+          {isComplete && !selectMode && (
+            <span
+              role="button"
+              tabIndex={0}
+              onClick={(e) => { e.stopPropagation(); onDownload(trip.id) }}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); onDownload(trip.id) } }}
+              className="text-xs text-white/40 hover:text-white/80"
+            >
+              ↓ {t('plans.download')}
+            </span>
+          )}
         </div>
       </div>
     </motion.button>
@@ -256,6 +268,7 @@ export default function TripListScreen() {
               trip={tr}
               onOpen={openTrip}
               t={t}
+              onDownload={downloadTripExport}
               selectMode={selectMode}
               selected={selectedIds.has(tr.id)}
               onToggle={toggleSelect}

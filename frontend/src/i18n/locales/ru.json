@@ -71,7 +71,8 @@
     "multiCity": "Несколько городов",
     "select": "Выбрать", 
     "delete": "Удалить ({{count}})", 
-    "confirmDelete": "Точно удалить ({{count}})?"
+    "confirmDelete": "Точно удалить ({{count}})?",
+    "download": "Скачать"
   },
   "sidebar": {
     "tripSetup": "Настройка поездки",
@@ -232,7 +233,8 @@
     "overBudget": "Превышение бюджета",
     "regenerate": "Обновить",
     "generatedAt": "Создано",
-    "confirmPlan": "Сохранить план"
+    "confirmPlan": "Сохранить план",
+    "download": "Скачать план"
   },
   "blastRadius": {
     "title": "Возврат назад сбросит последующие этапы",

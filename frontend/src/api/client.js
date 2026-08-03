@@ -204,6 +204,42 @@ export function deleteTrip(tripId) {
   return request(`/trips/${tripId}`, { method: 'DELETE' })
 }
 
+// GET /trips/{id}/export → text/markdown as an attachment, saved via a
+// temporary object URL. Bypasses request(): we need the raw Blob and the
+// Content-Disposition header, not parsed JSON. 409 = plan not confirmed yet.
+export async function downloadTripExport(tripId) {
+  const headers = {}
+  const token = getToken()
+  if (token) headers['Authorization'] = `Bearer ${token}`
+
+  let res
+  try {
+    res = await fetch(`${BASE_URL}/trips/${tripId}/export`, { headers })
+  } catch {
+    throw new ApiError('networkError', 0, 'Network request failed')
+  }
+  if (res.status === 401) clearToken()
+  if (!res.ok) {
+    let detail = null
+    try { detail = (await res.json())?.detail } catch { /* non-JSON body */ }
+    throw new ApiError(codeForResponse(res.status, detail), res.status, detail)
+  }
+
+  const blob = await res.blob()
+  const cd = res.headers.get('Content-Disposition') || ''
+  const match = cd.match(/filename="([^"]+)"/)
+  const filename = match ? match[1] : `trip-${tripId}.md`
+
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}
+
 // ── Weather + assembly endpoints ──────────────────────────────────────────────
 // React 18 StrictMode double-invokes effects in dev, so a stage that fetches on
 // mount fires twice. For weather that's a wasted geocode+HTTP; for assembly it's

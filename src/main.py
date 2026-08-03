@@ -38,6 +38,7 @@ from src.api.routes.trips import router as trips_router
 from src.api.routes.stage_options import router as stage_options_router
 from src.api.routes import weather
 from src.api.routes import assemble
+from src.api.routes import export
 
 
 # ── Startup / shutdown ────────────────────────────────────────────────────────
@@ -101,6 +102,7 @@ app.add_middleware(
     allow_credentials=True,   # required for Authorization header
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Content-Disposition"],
 )
 
 
@@ -113,7 +115,7 @@ app.include_router(trips_router)
 app.include_router(stage_options_router)
 app.include_router(weather.router)
 app.include_router(assemble.router)
-
+app.include_router(export.router)
 
 # ── Health check ──────────────────────────────────────────────────────────────
 

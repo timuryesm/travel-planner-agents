@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { StageCard, StageActions } from './primitives'
-import { assembleTrip } from '../../api/client'
+import { assembleTrip, downloadTripExport } from '../../api/client'
 import useTripStore from '../../store/tripStore'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -144,6 +144,15 @@ export default function FinalStage({ commit, commitData, transitioning }) {
           <span className="text-white/30 text-xs">
             {t('final.generatedAt')}: {new Date(result.generated_at).toLocaleString()}
           </span>
+        )}
+        {commitData?.itinerary_markdown && (
+          <button
+            onClick={() => downloadTripExport(trip.id).catch(() => {})}
+            className="text-sm hover:underline"
+            style={{ color: '#2dd4bf' }}
+          >
+            ↓ {t('final.download')}
+          </button>
         )}
       </div>
 

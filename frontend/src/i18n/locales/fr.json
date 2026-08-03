@@ -71,7 +71,8 @@
     "multiCity": "Multi-villes",
     "select": "Sélectionner", 
     "delete": "Supprimer ({{count}})", 
-    "confirmDelete": "Vraiment supprimer ({{count}}) ?"
+    "confirmDelete": "Vraiment supprimer ({{count}}) ?",
+    "download": "Télécharger"
   },
   "sidebar": {
     "tripSetup": "Préparation du voyage",
@@ -229,7 +230,8 @@
     "overBudget": "Hors budget",
     "regenerate": "Régénérer",
     "generatedAt": "Généré le",
-    "confirmPlan": "Enregistrer ce plan"
+    "confirmPlan": "Enregistrer ce plan",
+    "download": "Télécharger le plan"
   },
   "blastRadius": {
     "title": "Revenir en arrière réinitialisera les étapes suivantes",

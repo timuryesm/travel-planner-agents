@@ -71,7 +71,8 @@
     "multiCity": "Multi-city",
     "select": "Select", 
     "delete": "Delete ({{count}})", 
-    "confirmDelete": "Really delete ({{count}})?"
+    "confirmDelete": "Really delete ({{count}})?",
+    "download": "Download"
   },
   "sidebar": {
     "tripSetup": "Trip setup",
@@ -229,7 +230,8 @@
     "overBudget": "Over budget",
     "regenerate": "Regenerate",
     "generatedAt": "Generated",
-    "confirmPlan": "Save this plan"
+    "confirmPlan": "Save this plan",
+    "download": "Download plan"
   },
   "blastRadius": {
     "title": "Going back will reset later steps",

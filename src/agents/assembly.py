@@ -32,7 +32,10 @@ from src.state.schemas import (
     IntercityCommitData,
     AccommodationCommitData,
     ActivitiesCommitData,
+    CityCommitData,
+    CountryCommitData,
     DailyPlanCommitData,
+    FinalCommitData,
     FlightsCommitData,
     SetupCommitData,
 )
@@ -225,3 +228,47 @@ def req_budget(setup: SetupCommitData) -> float:
 
 def generated_at() -> datetime:
     return datetime.now(timezone.utc)
+
+
+# ── Export ────────────────────────────────────────────────────────────────────
+
+def export_inputs_from_commits(trip: Trip) -> dict[str, Any]:
+    """
+    The validated payloads render_export_markdown needs, from commit rows.
+
+    Lives here, not in the export route: this module is the one place that
+    reads commit rows (see module docstring), and export is another consumer
+    of them, not a new boundary.
+
+    The final commit is the gate. Country and city missing UNDER a completed
+    final commit should be impossible — cascade-invalidate would have taken
+    final down with them — so that case raises AssemblyNotReady too (a 409
+    the user can act on) rather than crashing into a 500.
+    """
+    final = _trip_commit(trip, TripLevelStage.final.value)
+    if final is None:
+        raise AssemblyNotReady("The plan has not been confirmed yet.")
+
+    setup = _require_setup(trip)
+    country = _trip_commit(trip, TripLevelStage.country.value)
+    cities = _trip_commit(trip, TripLevelStage.city.value)
+    if country is None or cities is None:
+        raise AssemblyNotReady("The plan is missing its destination commits.")
+
+    country_row = next(
+        (c for c in trip.trip_stage_commits
+         if c.stage == TripLevelStage.country.value and c.completed),
+        None,
+    )
+
+    return {
+        "final": FinalCommitData.model_validate(final),
+        "setup": setup,
+        "country": CountryCommitData.model_validate(country),
+        "cities": CityCommitData.model_validate(cities),
+        # updated_at, not created_at: commit rows are pre-created as
+        # 'unvisited' when the trip is created, so created_at is the trip's
+        # birth date. updated_at is when this commit actually landed — i.e.
+        # when the State Dept advisory in it was fetched.
+        "advisory_as_of": country_row.updated_at.date() if country_row else None,
+    }
