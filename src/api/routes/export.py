@@ -18,8 +18,10 @@ to serve, and half a document would be worse than none.
 from __future__ import annotations
 
 import uuid
+from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.agents.assembly import AssemblyNotReady, export_inputs_from_commits
@@ -27,7 +29,11 @@ from src.auth.jwt import get_current_user
 from src.db.base import get_db
 from src.db.models import User
 from src.db.trip_repository import load_trip
-from src.state.plan_export import export_filename, render_export_markdown
+from src.state.plan_export import (
+    export_filename,
+    render_export_markdown,
+    render_export_pdf,
+)
 
 router = APIRouter(prefix="/trips", tags=["export"])
 
@@ -38,6 +44,7 @@ router = APIRouter(prefix="/trips", tags=["export"])
 )
 async def export_plan(
     trip_id: uuid.UUID,
+    format: Literal["md", "pdf"] = Query("md", description="Document format"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> Response:
@@ -63,10 +70,20 @@ async def export_plan(
         inputs["setup"].departure_date,
     )
 
+    if format == "pdf":
+        # PDF generation is CPU-bound (~1s: font parsing dominates). Off the
+        # event loop, same reasoning as the assemble route's Claude call.
+        content = await run_in_threadpool(render_export_pdf, document)
+        media_type = "application/pdf"
+        filename = filename.removesuffix(".md") + ".pdf"
+    else:
+        content = document
+        media_type = "text/markdown; charset=utf-8"
+
     # filename is ASCII-slugged by export_filename, so the plain filename=
     # form is header-safe; the body itself is full UTF-8 (RU/FR ready).
     return Response(
-        content=document,
-        media_type="text/markdown; charset=utf-8",
+        content=content,
+        media_type=media_type,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

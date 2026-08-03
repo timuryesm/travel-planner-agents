@@ -30,3 +30,5 @@ alembic
 psycopg2-binary
 bcrypt
 python-jose[cryptography]
+fpdf2>=2.8
+markdown>=3.5

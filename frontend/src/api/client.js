@@ -207,14 +207,14 @@ export function deleteTrip(tripId) {
 // GET /trips/{id}/export → text/markdown as an attachment, saved via a
 // temporary object URL. Bypasses request(): we need the raw Blob and the
 // Content-Disposition header, not parsed JSON. 409 = plan not confirmed yet.
-export async function downloadTripExport(tripId) {
+export async function downloadTripExport(tripId, { format = 'md' } = {}) {
   const headers = {}
   const token = getToken()
   if (token) headers['Authorization'] = `Bearer ${token}`
 
   let res
   try {
-    res = await fetch(`${BASE_URL}/trips/${tripId}/export`, { headers })
+    res = await fetch(`${BASE_URL}/trips/${tripId}/export?format=${format}`, { headers })
   } catch {
     throw new ApiError('networkError', 0, 'Network request failed')
   }
@@ -228,7 +228,7 @@ export async function downloadTripExport(tripId) {
   const blob = await res.blob()
   const cd = res.headers.get('Content-Disposition') || ''
   const match = cd.match(/filename="([^"]+)"/)
-  const filename = match ? match[1] : `trip-${tripId}.md`
+  const filename = match ? match[1] : `trip-${tripId}.${format}`
 
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')

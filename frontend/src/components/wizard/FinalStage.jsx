@@ -146,13 +146,22 @@ export default function FinalStage({ commit, commitData, transitioning }) {
           </span>
         )}
         {commitData?.itinerary_markdown && (
-          <button
-            onClick={() => downloadTripExport(trip.id).catch(() => {})}
-            className="text-sm hover:underline"
-            style={{ color: '#2dd4bf' }}
-          >
-            ↓ {t('final.download')}
-          </button>
+          <>
+            <button
+              onClick={() => downloadTripExport(trip.id, { format: 'pdf' }).catch(() => {})}
+              className="text-sm hover:underline"
+              style={{ color: '#2dd4bf' }}
+            >
+              ↓ {t('final.downloadPdf')}
+            </button>
+            <button
+              onClick={() => downloadTripExport(trip.id, { format: 'md' }).catch(() => {})}
+              className="text-sm hover:underline"
+              style={{ color: '#2dd4bf' }}
+            >
+              ↓ {t('final.download')}
+            </button>
+          </>
         )}
       </div>
 

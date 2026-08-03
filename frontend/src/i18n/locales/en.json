@@ -231,7 +231,8 @@
     "regenerate": "Regenerate",
     "generatedAt": "Generated",
     "confirmPlan": "Save this plan",
-    "download": "Download plan"
+    "download": "Download plan",
+    "downloadPdf": "Download PDF"
   },
   "blastRadius": {
     "title": "Going back will reset later steps",

@@ -122,7 +122,7 @@ function TripCard({ trip, onOpen, t, selectMode, selected, onToggle, onDownload 
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); onDownload(trip.id) } }}
               className="text-xs text-white/40 hover:text-white/80"
             >
-              ↓ {t('plans.download')}
+              ↓ {t('plans.downloadPDF')}
             </span>
           )}
         </div>
@@ -268,10 +268,10 @@ export default function TripListScreen() {
               trip={tr}
               onOpen={openTrip}
               t={t}
-              onDownload={downloadTripExport}
               selectMode={selectMode}
               selected={selectedIds.has(tr.id)}
               onToggle={toggleSelect}
+              onDownload={(id) => downloadTripExport(id, { format: 'pdf' }).catch(() => {})}
             />
           ))}
         </div>

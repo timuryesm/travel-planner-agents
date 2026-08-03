@@ -234,7 +234,8 @@
     "regenerate": "Обновить",
     "generatedAt": "Создано",
     "confirmPlan": "Сохранить план",
-    "download": "Скачать план"
+    "download": "Скачать план",
+    "downloadPdf": "Скачать PDF"
   },
   "blastRadius": {
     "title": "Возврат назад сбросит последующие этапы",

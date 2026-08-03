@@ -231,7 +231,8 @@
     "regenerate": "Régénérer",
     "generatedAt": "Généré le",
     "confirmPlan": "Enregistrer ce plan",
-    "download": "Télécharger le plan"
+    "download": "Télécharger le plan",
+    "downloadPdf": "Télécharger le PDF"
   },
   "blastRadius": {
     "title": "Revenir en arrière réinitialisera les étapes suivantes",

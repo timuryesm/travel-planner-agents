@@ -22,7 +22,11 @@ from __future__ import annotations
 import re
 import unicodedata
 from datetime import date
+from pathlib import Path
 from typing import Optional
+
+import markdown as _markdown
+from fpdf import FPDF
 
 from src.state.schemas import (
     CityCommitData,
@@ -106,3 +110,70 @@ def render_export_markdown(
     )
 
     return "\n".join(out) + "\n"
+
+# ── PDF ───────────────────────────────────────────────────────────────────────
+# A second renderer over the SAME document the markdown export produces, which
+# is why this takes a string rather than commit payloads: markdown is the
+# canonical form, PDF is a presentation of it. Phase D email can reuse either.
+#
+# fpdf2 + markdown are both pure Python — no Pango/Cairo, so the Docker image
+# needs no system packages. The cost is that fpdf2 bundles no fonts, hence the
+# vendored DejaVu faces: they cover Latin + Cyrillic, so a Russian-language
+# plan renders rather than dropping to '?' glyphs.
+
+_FONT_DIR = Path(__file__).resolve().parent.parent / "assets" / "fonts"
+_FONT_FAMILY = "DejaVu"
+_FONT_FACES = {
+    "": "DejaVuSans.ttf",
+    "B": "DejaVuSans-Bold.ttf",
+    "I": "DejaVuSans-Oblique.ttf",
+    "BI": "DejaVuSans-BoldOblique.ttf",
+}
+
+# fpdf2's write_html cannot render mixed content inside a table cell: a cell
+# that is entirely one tag is fine, but "text <a href=…>link</a>" raises
+# NotImplementedError (fpdf/html.py — they defer it pending a text-layout
+# refactor). Real itineraries put booking links in cells, so cells are
+# flattened to plain text. Links elsewhere — paragraphs, bullets — survive
+# and stay clickable. The URL itself is only lost in cells; the markdown
+# export keeps every one of them.
+#
+# Regex over HTML is normally a bad idea; it is acceptable here because the
+# input is python-markdown's own output over a constrained document, not
+# arbitrary web HTML.
+_CELL_RE = re.compile(
+    r"(<(?P<tag>td|th)\b[^>]*>)(?P<body>.*?)(</(?P=tag)>)",
+    re.IGNORECASE | re.DOTALL,
+)
+_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _flatten_table_cells(html: str) -> str:
+    def repl(m: re.Match) -> str:
+        body = _TAG_RE.sub("", m.group("body"))
+        body = re.sub(r"\s+", " ", body).strip()
+        return f"{m.group(1)}{body}{m.group(4)}"
+
+    return _CELL_RE.sub(repl, html)
+
+def render_export_pdf(document_markdown: str) -> bytes:
+    """
+    The markdown export document -> PDF bytes.
+
+    Pagination is fpdf2's write_html: when a heading lands at the bottom
+    margin it breaks early, which can leave a sparse page. Cosmetic only —
+    no content is dropped. Rendering with fpdf2 primitives instead would fix
+    it at the cost of hand-laying out every element; not worth it yet.
+    """
+    html = _flatten_table_cells(
+        _markdown.markdown(document_markdown, extensions=["tables"])
+    )
+
+    pdf = FPDF()
+    for style, filename in _FONT_FACES.items():
+        pdf.add_font(_FONT_FAMILY, style, str(_FONT_DIR / filename))
+    pdf.set_font(_FONT_FAMILY, size=11)
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()          # required: write_html raises without an open page
+    pdf.write_html(html)
+    return bytes(pdf.output())
