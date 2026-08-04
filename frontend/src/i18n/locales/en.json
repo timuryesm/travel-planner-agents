@@ -217,7 +217,10 @@
     "applyChanges": "Apply changes",
     "weatherLabel": "Weather",
     "seasonalNote": "Typical weather for this time of year — the trip's too far out for a live forecast.",
-    "weatherUnavailable": "Weather couldn't be loaded for these dates."
+    "weatherUnavailable": "Weather couldn't be loaded for these dates.",
+    "moveEarlier": "Move earlier",
+    "moveLater": "Move later",
+    "editedHint": "You've rearranged the plan — confirm to save it."
   },
   "final": {
     "title": "Your itinerary",

@@ -110,6 +110,64 @@ function generatePlan(startDate, numDays, hub, spokes, forecastByDay) {
   return days
 }
 
+// ── Manual moves ─────────────────────────────────────────────────────────────
+// An activity may only move between days spent in the SAME city. A spoke day
+// is a day trip: an activity chosen for Kyoto cannot be done on a Tokyo day,
+// so a cross-city move would commit a plan that can't happen. Single-city
+// trips have one city, so every day is eligible and the rule is invisible.
+//
+// Hub days either side of a day trip are both hub days, so an activity can
+// hop OVER a spoke day — correct, you're back in the hub the next morning.
+
+function prevSameCityDay(plan, dayIdx) {
+  for (let i = dayIdx - 1; i >= 0; i--) {
+    if (plan[i].city === plan[dayIdx].city) return i
+  }
+  return -1
+}
+
+function nextSameCityDay(plan, dayIdx) {
+  for (let i = dayIdx + 1; i < plan.length; i++) {
+    if (plan[i].city === plan[dayIdx].city) return i
+  }
+  return -1
+}
+
+// dir: -1 = earlier, +1 = later
+function canMove(plan, dayIdx, actIdx, dir) {
+  if (dir === -1) return actIdx > 0 || prevSameCityDay(plan, dayIdx) !== -1
+  return (
+    actIdx < plan[dayIdx].activity_names.length - 1 ||
+    nextSameCityDay(plan, dayIdx) !== -1
+  )
+}
+
+// Returns a NEW plan; never mutates. Day objects and their activity_names
+// arrays are both copied, so React sees changed references and the committed
+// payload shares no structure with the previous state. Returns the ORIGINAL
+// reference when the move isn't possible, which is how handleMove detects a
+// no-op without re-checking canMove.
+function moveActivity(plan, dayIdx, actIdx, dir) {
+  const next = plan.map((d) => ({ ...d, activity_names: [...d.activity_names] }))
+  const names = next[dayIdx].activity_names
+
+  const withinDay = dir === -1 ? actIdx > 0 : actIdx < names.length - 1
+  if (withinDay) {
+    const j = actIdx + dir
+    ;[names[actIdx], names[j]] = [names[j], names[actIdx]]
+    return next
+  }
+
+  const targetIdx =
+    dir === -1 ? prevSameCityDay(plan, dayIdx) : nextSameCityDay(plan, dayIdx)
+  if (targetIdx === -1) return plan
+
+  const [moved] = names.splice(actIdx, 1)
+  if (dir === -1) next[targetIdx].activity_names.push(moved)
+  else next[targetIdx].activity_names.unshift(moved)
+  return next
+}
+
 function nightsBetween(depart, ret) {
   if (!depart || !ret) return 3
   const n = Math.round((new Date(ret) - new Date(depart)) / 86400000)
@@ -145,6 +203,7 @@ export default function DailyPlanStage({ commit, skip, forward, commitData, setu
     revisiting ? commitData.day_by_day : null
   )
   const [weatherState, setWeatherState] = useState('loading') // loading|ready|seasonal|failed
+  const [edited, setEdited] = useState(false)
 
   useEffect(() => {
     if (revisiting) { setWeatherState('ready'); return }
@@ -165,6 +224,13 @@ export default function DailyPlanStage({ commit, skip, forward, commitData, setu
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trip.id])
+
+  function handleMove(dayIdx, actIdx, dir) {
+    const next = moveActivity(plan, dayIdx, actIdx, dir)
+    if (next === plan) return   // move wasn't possible; leave state untouched
+    setPlan(next)
+    setEdited(true)
+  }
 
   function handleConfirm() {
     // Committed as generated, or as previously committed on revisit. Free-text
@@ -218,14 +284,34 @@ export default function DailyPlanStage({ commit, skip, forward, commitData, setu
             {day.activity_names.length > 0 ? (
               <div className="flex flex-col gap-1.5">
                 {day.activity_names.map((name, j) => (
-                  <div key={j} className="flex items-center gap-2.5">
+                  <div key={`${name}-${j}`} className="flex items-center gap-2.5">
                     <span
                       style={{
                         width: 5, height: 5, borderRadius: '50%',
                         background: '#2dd4bf', flexShrink: 0,
                       }}
                     />
-                    <span className="text-white/75 text-sm">{name}</span>
+                    <span className="text-white/75 text-sm flex-1">{name}</span>
+                    <button
+                      onClick={() => handleMove(i, j, -1)}
+                      disabled={transitioning || !canMove(plan, i, j, -1)}
+                      title={t('dailyPlan.moveEarlier')}
+                      aria-label={t('dailyPlan.moveEarlier')}
+                      className="text-xs px-1.5 py-0.5 rounded hover:bg-white/10 disabled:opacity-20"
+                      style={{ color: '#2dd4bf' }}
+                    >
+                      ↑
+                    </button>
+                    <button
+                      onClick={() => handleMove(i, j, 1)}
+                      disabled={transitioning || !canMove(plan, i, j, 1)}
+                      title={t('dailyPlan.moveLater')}
+                      aria-label={t('dailyPlan.moveLater')}
+                      className="text-xs px-1.5 py-0.5 rounded hover:bg-white/10 disabled:opacity-20"
+                      style={{ color: '#2dd4bf' }}
+                    >
+                      ↓
+                    </button>
                   </div>
                 ))}
               </div>
@@ -236,9 +322,12 @@ export default function DailyPlanStage({ commit, skip, forward, commitData, setu
         ))}
       </div>
 
-      {/* Free-text plan editing (send a note, agent rewrites the plan) is
-          Track 3 / Phase D. Omitted here rather than shown as a box that
-          discards what you type. */}
+      {edited && (
+        <p className="text-white/40 text-xs mt-3">{t('dailyPlan.editedHint')}</p>
+      )}
+
+      {/* Free-text plan editing (send a note, the agent rewrites the plan) is
+          the next commit. Manual moves above are the deterministic half. */}
 
       <StageActions
         onConfirm={handleConfirm}

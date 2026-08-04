@@ -217,7 +217,10 @@
     "applyChanges": "Appliquer les changements",
     "weatherLabel": "Météo",
     "seasonalNote": "Météo typique pour cette période — le voyage est trop lointain pour des prévisions en temps réel.",
-    "weatherUnavailable": "Impossible de charger la météo pour ces dates."
+    "weatherUnavailable": "Impossible de charger la météo pour ces dates.",
+    "moveEarlier": "Déplacer plus tôt", 
+    "moveLater": "Déplacer plus tard", 
+    "editedHint": "Vous avez réorganisé le plan — confirmez pour l'enregistrer."
   },
   "final": {
     "title": "Votre itinéraire",
