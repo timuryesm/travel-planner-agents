@@ -59,7 +59,16 @@ def test_selected_is_cheapest_affordable():
     assert result.selected_flight.price_usd == min(f.price_usd for f in candidates)
 
 
-def test_unknown_city_adds_error():
+def test_unknown_city_still_gets_options():
+    """
+    A city outside the IATA table must NOT kill the stage.
+
+    This used to assert the opposite: lookup_iata raised, the agent returned
+    early with flight_options still None, and the adapter served an empty
+    list — a flights stage offering nothing but "I've booked my own", with
+    nothing logged because nothing was raised. The IATA code is used only in
+    a log line, so it now degrades to the city name.
+    """
     plan = TravelPlan(
         request=TravelRequest(
             destination="Atlantis", origin="Toronto",
@@ -68,5 +77,11 @@ def test_unknown_city_adds_error():
         )
     )
     result = FlightAgent().safe_run(plan)
-    assert result.selected_flight is None
-    assert len(result.errors) > 0
+
+    assert result.flight_options, "an unknown city should still get mock flights"
+    assert result.selected_flight is not None
+    assert not result.errors
+    # No Skyscanner city code for Atlantis, so the deep link would be built
+    # from a guessed code pointing at the wrong route — degrades to the
+    # homepage instead.
+    assert result.selected_flight.booking_url == "https://www.skyscanner.com/"

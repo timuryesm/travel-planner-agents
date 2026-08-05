@@ -33,7 +33,7 @@ class HotelAgent(BaseAgent):
             f"{req.travelers} guest(s) · type: {acc}"
         )
 
-        if settings.RAPIDAPI_KEY:
+        if settings.RAPIDAPI_KEY and settings.BOOKING_ENABLED:
             try:
                 dest_id = self._get_destination_id(req.destination)
                 options = self._search_hotels(
