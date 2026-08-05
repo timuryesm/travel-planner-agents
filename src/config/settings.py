@@ -18,7 +18,6 @@ def _env_bool(name: str, default: bool = False) -> bool:
 
 class Settings:
     ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
-    OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
     RAPIDAPI_KEY: str = os.getenv("RAPIDAPI_KEY", "")
 
     # Gate on /auth/register. Empty (the default) means registration is OPEN,
