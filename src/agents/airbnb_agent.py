@@ -1,6 +1,7 @@
 from __future__ import annotations
 import httpx
 import random
+from urllib.parse import quote_plus
 from datetime import date
 from src.agents.base_agent import BaseAgent
 from src.state.travel_plan import TravelPlan, HotelOption
@@ -94,8 +95,6 @@ class AirbnbAgent(BaseAgent):
     ) -> list[HotelOption]:
         options: list[HotelOption] = []
 
-        self.logger.warning(f"Airbnb raw 'data' content: {raw.get('data')}")  # debug
-
         listings = raw.get("data") or raw.get("results") or raw.get("list") or []
         if isinstance(listings, dict):
             listings = listings.get("list") or listings.get("results") or []
@@ -156,12 +155,26 @@ class AirbnbAgent(BaseAgent):
         checkout: date,
         adults: int,
     ) -> str:
-        city = destination.replace(" ", "--") + "--Japan"   # works for Tokyo
+        """
+        Airbnb search URL for a city.
+
+        The path segment used to be built as `destination + "--Japan"`, with a
+        comment saying it worked for Tokyo. It did — and it sent every other
+        city to a Japanese search: Paris became "Paris--Japan". Same class of
+        bug as the guessed Skyscanner city code, and invisible here because the
+        wizard never calls this agent yet.
+
+        Airbnb's own search page accepts a free-text query parameter, so the
+        honest fix is to stop constructing a location slug we cannot construct
+        correctly. `/s/homes?query=...` resolves the place name server-side —
+        no country table to keep, and no wrong country when it's missing.
+        """
         return (
-            f"https://www.airbnb.com/s/{city}/homes"
-            f"?checkin={checkin}&checkout={checkout}"
+            "https://www.airbnb.com/s/homes"
+            f"?query={quote_plus(destination)}"
+            f"&checkin={checkin.isoformat()}"
+            f"&checkout={checkout.isoformat()}"
             f"&adults={adults}"
-            f"&tab_id=home_tab"
         )
 
     # ── Mock data ────────────────────────────────────────────────────────
