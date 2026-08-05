@@ -1,8 +1,8 @@
 import React from 'react'
 import { motion } from 'framer-motion'
 
-import dayImg from '../../assets/toronto-day.png'
-import nightImg from '../../assets/toronto-night.png'
+import dayImg from '../../assets/toronto-day.webp'
+import nightImg from '../../assets/toronto-night.webp'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TorontoSkyline — photographic background with day/night crossfade
