@@ -220,7 +220,17 @@
     "weatherUnavailable": "Impossible de charger la météo pour ces dates.",
     "moveEarlier": "Déplacer plus tôt", 
     "moveLater": "Déplacer plus tard", 
-    "editedHint": "Vous avez réorganisé le plan — confirmez pour l'enregistrer."
+    "editedHint": "Vous avez réorganisé le plan — confirmez pour l'enregistrer.",
+    "editFailed": "Impossible d'appliquer ce changement. Reformulez.",
+    "editNoChange": "Rien n'a changé.",
+    "skipped": {
+      "notOnPlan": "« {{activity}} » n'est pas dans le plan.",
+      "unknownDate": "Date introuvable.",
+      "differentCity": "« {{activity}} » ne peut pas être déplacé vers un jour dans une autre ville.",
+      "unknown_activity": "« {{activity}} » ne fait pas partie de vos activités choisies.",
+      "malformed": "Une partie de la demande n'a pas été comprise.",
+      "missing_date": "Une partie de la demande n'a pas été comprise."
+    }
   },
   "final": {
     "title": "Votre itinéraire",

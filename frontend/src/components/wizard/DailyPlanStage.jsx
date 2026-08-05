@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { StageCard, StageActions } from './primitives'
-import { getWeather } from '../../api/client'
+import { getWeather, planEdit } from '../../api/client'
 import useTripStore from '../../store/tripStore'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -168,6 +168,62 @@ function moveActivity(plan, dayIdx, actIdx, dir) {
   return next
 }
 
+// ── Applying agent ops ───────────────────────────────────────────────────────
+// The backend has already checked that each op names an activity on this trip.
+// What's left is structural, and it's enforced HERE rather than server-side so
+// the same-city rule has exactly one implementation — the one the ↑/↓ buttons
+// already use and that testing exercises.
+//
+// Returns { plan, applied, skipped } so the component can report honestly:
+// a request that half-worked says which half.
+
+function findActivity(plan, name) {
+  for (let d = 0; d < plan.length; d++) {
+    const j = plan[d].activity_names.indexOf(name)
+    if (j !== -1) return { dayIdx: d, actIdx: j }
+  }
+  return null
+}
+
+function applyOps(plan, ops) {
+  let next = plan.map((d) => ({ ...d, activity_names: [...d.activity_names] }))
+  const applied = []
+  const skipped = []
+
+  for (const op of ops) {
+    const at = findActivity(next, op.activity)
+    if (!at) {
+      skipped.push({ activity: op.activity, reason: 'notOnPlan' })
+      continue
+    }
+
+    if (op.op === 'remove') {
+      next[at.dayIdx].activity_names.splice(at.actIdx, 1)
+      applied.push(op)
+      continue
+    }
+
+    const targetIdx = next.findIndex((d) => d.date === op.to_date)
+    if (targetIdx === -1) {
+      skipped.push({ activity: op.activity, reason: 'unknownDate' })
+      continue
+    }
+    // The rule the manual buttons enforce by disabling: a spoke day IS the
+    // day trip, so its activities cannot land on a hub day.
+    if (next[targetIdx].city !== next[at.dayIdx].city) {
+      skipped.push({ activity: op.activity, reason: 'differentCity' })
+      continue
+    }
+
+    next[at.dayIdx].activity_names.splice(at.actIdx, 1)
+    if (op.position === 'start') next[targetIdx].activity_names.unshift(op.activity)
+    else next[targetIdx].activity_names.push(op.activity)
+    applied.push(op)
+  }
+
+  return { plan: next, applied, skipped }
+}
+
 function nightsBetween(depart, ret) {
   if (!depart || !ret) return 3
   const n = Math.round((new Date(ret) - new Date(depart)) / 86400000)
@@ -204,6 +260,10 @@ export default function DailyPlanStage({ commit, skip, forward, commitData, setu
   )
   const [weatherState, setWeatherState] = useState('loading') // loading|ready|seasonal|failed
   const [edited, setEdited] = useState(false)
+  const [editText, setEditText] = useState('')
+  const [editing, setEditing] = useState(false)
+  const [editNote, setEditNote] = useState(null)   // { note, skipped[] } | null
+  const [editFailed, setEditFailed] = useState(false)
 
   useEffect(() => {
     if (revisiting) { setWeatherState('ready'); return }
@@ -230,6 +290,34 @@ export default function DailyPlanStage({ commit, skip, forward, commitData, setu
     if (next === plan) return   // move wasn't possible; leave state untouched
     setPlan(next)
     setEdited(true)
+  }
+
+  function handleEdit() {
+    const message = editText.trim()
+    if (!message || !plan) return
+    setEditing(true)
+    setEditFailed(false)
+    setEditNote(null)
+    planEdit(trip.id, plan, message)
+      .then((res) => {
+        const { plan: nextPlan, applied, skipped } = applyOps(plan, res.ops || [])
+        // Only touch state if something actually changed — an unclear request
+        // that produced no ops should not mark the plan as edited.
+        if (applied.length > 0) {
+          setPlan(nextPlan)
+          setEdited(true)
+        }
+        setEditNote({
+          note: res.note,
+          skipped: [...skipped, ...(res.rejected || []).map((r) => ({
+            activity: r.op?.activity, reason: r.reason,
+          }))],
+          appliedCount: applied.length,
+        })
+        setEditText('')
+      })
+      .catch(() => setEditFailed(true))
+      .finally(() => setEditing(false))
   }
 
   function handleConfirm() {
@@ -326,8 +414,55 @@ export default function DailyPlanStage({ commit, skip, forward, commitData, setu
         <p className="text-white/40 text-xs mt-3">{t('dailyPlan.editedHint')}</p>
       )}
 
-      {/* Free-text plan editing (send a note, the agent rewrites the plan) is
-          the next commit. Manual moves above are the deterministic half. */}
+      <div className="mt-4">
+        <label className="text-white/60 text-xs block mb-1.5">
+          {t('dailyPlan.editPlan')}
+        </label>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={editText}
+            onChange={(e) => setEditText(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleEdit() }}
+            placeholder={t('dailyPlan.editPlaceholder')}
+            disabled={editing || transitioning}
+            className="flex-1 rounded-lg px-3 py-2 text-sm text-white/90"
+            style={{
+              background: 'rgba(255,255,255,0.05)',
+              border: '1px solid rgba(255,255,255,0.12)',
+            }}
+          />
+          <button
+            onClick={handleEdit}
+            disabled={editing || transitioning || !editText.trim()}
+            className="px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-40"
+            style={{ color: '#0a0e1a', background: 'linear-gradient(135deg, #2dd4bf, #38bdf8)' }}
+          >
+            {editing ? t('common.loading') : t('dailyPlan.applyChanges')}
+          </button>
+        </div>
+
+        {editFailed && (
+          <p className="text-xs mt-2" style={{ color: '#fb7185' }}>
+            {t('dailyPlan.editFailed')}
+          </p>
+        )}
+        {editNote && (
+          <div className="mt-2">
+            {editNote.note && (
+              <p className="text-white/55 text-xs">{editNote.note}</p>
+            )}
+            {editNote.appliedCount === 0 && !editNote.note && (
+              <p className="text-white/40 text-xs">{t('dailyPlan.editNoChange')}</p>
+            )}
+            {editNote.skipped.map((s, k) => (
+              <p key={k} className="text-xs mt-1" style={{ color: '#fbbf24' }}>
+                {t(`dailyPlan.skipped.${s.reason}`, { activity: s.activity })}
+              </p>
+            ))}
+          </div>
+        )}
+      </div>
 
       <StageActions
         onConfirm={handleConfirm}

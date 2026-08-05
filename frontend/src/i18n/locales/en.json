@@ -220,7 +220,16 @@
     "weatherUnavailable": "Weather couldn't be loaded for these dates.",
     "moveEarlier": "Move earlier",
     "moveLater": "Move later",
-    "editedHint": "You've rearranged the plan — confirm to save it."
+    "editFailed": "Couldn't apply that change. Try rephrasing.",
+    "editNoChange": "Nothing changed.",
+    "skipped": {
+      "notOnPlan": "\"{{activity}}\" isn't on the plan.",
+      "unknownDate": "Couldn't find that date.",
+      "differentCity": "\"{{activity}}\" can't move to a day in another city.",
+      "unknown_activity": "\"{{activity}}\" isn't one of your chosen activities.",
+      "malformed": "Part of that request wasn't understood.",
+      "missing_date": "Part of that request wasn't understood."
+    }
   },
   "final": {
     "title": "Your itinerary",

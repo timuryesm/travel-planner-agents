@@ -273,6 +273,16 @@ export function assembleTrip(tripId, { force = false } = {}) {
   return p
 }
 
+// POST /trips/{id}/plan-edit → { ops, note, rejected }
+// Stateless: the component sends its working plan and gets operations back.
+// Nothing persists until the stage is confirmed.
+export function planEdit(tripId, dayByDay, message) {
+  return request(`/trips/${tripId}/plan-edit`, {
+    method: 'POST',
+    body: { day_by_day: dayByDay, message },
+  })
+}
+
 // POST /trips/{id}/transition  → TripDetailResponse
 // action is one of the discriminated-union shapes the backend expects:
 //   { action: 'COMMIT', commit_type, data, self_provided_text? }

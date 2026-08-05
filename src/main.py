@@ -39,6 +39,7 @@ from src.api.routes.stage_options import router as stage_options_router
 from src.api.routes import weather
 from src.api.routes import assemble
 from src.api.routes import export
+from src.api.routes import plan_edit
 
 
 # ── Startup / shutdown ────────────────────────────────────────────────────────
@@ -116,6 +117,7 @@ app.include_router(stage_options_router)
 app.include_router(weather.router)
 app.include_router(assemble.router)
 app.include_router(export.router)
+app.include_router(plan_edit.router)
 
 # ── Health check ──────────────────────────────────────────────────────────────
 
