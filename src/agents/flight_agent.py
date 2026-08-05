@@ -5,7 +5,12 @@ import time
 from datetime import date, datetime, timedelta
 from src.agents.base_agent import BaseAgent
 from src.state.travel_plan import TravelPlan, FlightOption, FlightLeg
-from src.tools.airport_lookup import lookup_iata, lookup_skyscanner_ids, city_to_skyscanner_code
+from src.tools.airport_lookup import (
+    lookup_iata,
+    lookup_skyscanner_ids,
+    city_to_skyscanner_code,
+    has_skyscanner_code,
+)
 from src.config.settings import settings
 
 
@@ -17,13 +22,24 @@ class FlightAgent(BaseAgent):
     def run(self, plan: TravelPlan) -> TravelPlan:
         req = plan.request
 
-        # IATA codes for display only -- fallback table, no network call
-        try:
-            origin_iata = lookup_iata(req.origin)
-            dest_iata   = lookup_iata(req.destination)
-        except ValueError as e:
-            plan.add_error(self.name, str(e))
-            return plan
+       # IATA codes are for the log line only — the mock path builds legs from
+        # city names, the booking URL uses city_to_skyscanner_code, and the
+        # real search uses lookup_skyscanner_ids. So a city missing from the
+        # fallback table must NOT stop the stage.
+        #
+        # It used to: an unresolved code returned early with flight_options
+        # still None, the adapter read that as an empty list, and the user got
+        # a flights stage offering nothing but "I've booked my own" — with no
+        # warning in the log, because nothing was raised. Punta Cana found it.
+        def _iata_or_city(city: str) -> str:
+            try:
+                return lookup_iata(city)
+            except ValueError:
+                self.logger.info(f"No IATA code for '{city}' — using the name")
+                return city
+
+        origin_iata = _iata_or_city(req.origin)
+        dest_iata = _iata_or_city(req.destination)
 
         self.logger.info(
             f"{req.origin} ({origin_iata}) → {req.destination} ({dest_iata}) "
@@ -207,6 +223,19 @@ class FlightAgent(BaseAgent):
         depart_date: date, return_date: date,
         trip_type: str, adults: int,
     ) -> str:
+        # Skyscanner deep links are built from city codes. For a city in
+        # neither lookup table, city_to_skyscanner_code falls back to
+        # city.upper()[:3] — a plausible-looking WRONG code that yields a
+        # well-formed URL landing on the wrong route. A guessed deep link is
+        # worse than no deep link, so degrade to a text search instead.
+        #
+        # Skyscanner has no stable text-query URL, so there is no partial deep
+        # link to fall back to — the homepage is the honest answer. Improving
+        # this means adding the city to the lookup tables, which is a real fix
+        # rather than a guess.
+        if not (has_skyscanner_code(origin_city) and has_skyscanner_code(dest_city)):
+            return "https://www.skyscanner.com/"
+
         orig = city_to_skyscanner_code(origin_city).lower() + "a"
         dest = city_to_skyscanner_code(dest_city).lower() + "a"
         dep  = depart_date.strftime("%y%m%d")

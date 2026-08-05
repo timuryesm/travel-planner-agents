@@ -162,6 +162,19 @@ def city_to_skyscanner_code(city: str) -> str:
     return IATA_FALLBACK.get(city.lower().strip(), city.upper()[:3])
 
 
+def has_skyscanner_code(city: str) -> bool:
+    """
+    True when city_to_skyscanner_code will return a REAL code rather than its
+    city.upper()[:3] guess.
+
+    Callers building a deep link need to know the difference: the guess is
+    plausible-looking and wrong ("PUN" for Punta Cana, whose real code is PUJ),
+    so it produces a well-formed URL pointing at the wrong route.
+    """
+    key = city.lower().strip()
+    return key in SKYSCANNER_CITY_CODES or key in IATA_FALLBACK
+
+
 def lookup_skyscanner_ids(city: str, rapidapi_key: str) -> tuple[str, str]:
     """
     Resolve a city name to Skyscanner's internal (skyId, entityId) pair
