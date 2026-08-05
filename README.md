@@ -2,18 +2,19 @@
 
 A multi-agent AI travel-planning application with a stepwise wizard UI,
 persistent state, and JWT authentication. Specialized agents handle each
-planning domain — country, city, flights, hotels, weather, activities, and
-budget — coordinated by a wizard state machine that lets users navigate, skip,
-and revise each stage of their plan.
+planning domain — country, city, flights, intercity travel, hotels, weather,
+activities, and budget — coordinated by a wizard state machine that lets users
+navigate, skip, and revise each stage of their plan.
 
 Built as a portfolio project targeting production-readiness: clean
 architecture, resumable sessions, real external APIs, and a multilingual React
 frontend (English / French / Russian).
 
-> **Status:** mid-redesign. The project is moving from an early multi-city model
-> to a **hub-and-spoke** one (see below). Track 1 — a single city planned all
-> the way to a rendered itinerary — is nearly complete; multi-city, sharing, and
-> deployment follow. The commit history is the source of truth for what's done.
+> **Status:** the hub-and-spoke redesign is complete end to end. A trip can be
+> planned from setup through a rendered itinerary, across one city or several,
+> saved, resumed, edited, and downloaded as Markdown or PDF. Remaining work is
+> deployment and polish — see the roadmap. The commit history is the source of
+> truth for what's done.
 
 ---
 
@@ -92,9 +93,9 @@ matching agent against committed wizard state:
    └────────┬─────────┘
             │  safe_run()
             ▼
-   ┌────────────────────────────────────────────┐
-   │  Country │ City │ Flight │ Hotel │ Activities│
-   └────────┬───────────────────────────────────┘
+   ┌──────────────────────────────────────────────────────┐
+   │ Country │ City │ Flight │ Intercity │ Hotel │ Activities │
+   └────────┬─────────────────────────────────────────────┘
             │
             ▼
     options[] shaped for that stage's commit payload
@@ -105,14 +106,24 @@ The adapter exists because the agents are built around a single-shot
 translation layer bridges them, so the same agents serve both the CLI pipeline
 and the stepwise UI without either being rewritten for the other.
 
-Weather is the exception: it's one object of context, not a list of options, so
-it has its own read-only endpoint (`GET /trips/{id}/weather`) rather than going
-through the options adapter.
+Three endpoints sit outside that flow because they aren't option lists:
+
+- **`GET /trips/{id}/weather`** — one object of context, not a list of choices.
+- **`POST /trips/{id}/assemble`** — generates the final itinerary from every
+  committed choice, and returns it *without persisting*.
+- **`POST /trips/{id}/plan-edit`** — interprets a free-text edit to the daily
+  plan as structured operations, and persists nothing.
 
 Navigation and persistence go through a single function — `transition(trip,
 action)` — which handles COMMIT / SKIP / FORWARD / BACK, validates each commit
 payload against its stage's schema *before* writing, and cascade-invalidates
 downstream stages on a backward jump.
+
+### Commit reading has one home
+
+`agents/assembly.py` is the only module that reads commit rows. Assembly,
+budget aggregation, and export all go through it, so the ORM never leaks into
+an agent and "what did the user actually choose" has a single implementation.
 
 ---
 
@@ -124,9 +135,11 @@ downstream stages on a backward jump.
 | **City** | Claude (within the committed country) | Raises — no honest generic answer |
 | **Weather** | Open-Meteo forecast / archive API | Empty forecast, neutral note |
 | **Flights** | Skyscanner via RapidAPI | Realistic mock data |
+| **Intercity** | Claude + web search (with citations) | Raises |
 | **Hotels** | Booking.com via RapidAPI | Realistic mock data |
 | **Airbnb** | Airbnb19 via RapidAPI | Realistic mock data |
 | **Activities** | Claude | Curated activity pool |
+| **Plan edit** | Claude | Raises — no generic answer to "what did they mean" |
 | **Budget** | Aggregates all agent results | — |
 | **Orchestrator** | Claude — assembles the final itinerary | — |
 
@@ -139,6 +152,11 @@ Country and city notes are deliberately split by source:
 - **safety_note** comes from the live State Department advisory feed, never the
   model. Advisories change, and stale or invented safety guidance is worse than
   none. On a lookup miss the note is dropped, not guessed.
+
+Intercity travel has no booking API behind it — there's no endpoint for "trains
+from Tokyo to Kyoto and what they cost" — so it comes from Claude with web
+search. That makes the numbers indicative rather than quotes, and the
+`Citation` list that produced them reaches the UI rather than being dropped.
 
 ### Key design decisions
 
@@ -183,11 +201,24 @@ declared once in `travel_plan.py` and re-exported from `schemas.py`, so an
 agent's output and the matching commit payload validate against the same class
 and cannot drift.
 
+**The confirmed plan is the artifact.** Export serves the itinerary the user
+pressed Confirm on, verbatim, rather than re-deriving a document from commits.
+Two renderings of the same trip that disagree would be worse than one plain
+one. PDF is a second renderer over the same Markdown, so the formats cannot
+drift apart.
+
+**Edits are operations, not rewrites.** A free-text edit ("move the museum to
+Thursday") returns a list of ops, not a rewritten plan. A hallucinated activity
+name fails one op and is reported; a rewritten plan would fail silently and
+totally. The structural rules — a spoke day's activities can't move to a hub
+day — are enforced in code, not by trusting the model to have read the
+instruction.
+
 ---
 
 ## Agent JSON, weather, and advisories — the tricky bits
 
-Three subsystems earned dedicated handling; each is documented at its source.
+Four subsystems earned dedicated handling; each is documented at its source.
 
 - **`tools/advisory_lookup.py`** — caches the State Dept feed (one document
   covering every country) on disk with a 6-hour TTL, matches countries by exact
@@ -200,6 +231,10 @@ Three subsystems earned dedicated handling; each is documented at its source.
   dates so the daily plan can look weather up by date.
 - **`agents/base_agent.py`** — `ask_claude_json` and `safe_run`, described
   above.
+- **`state/plan_export.py`** — wraps the confirmed itinerary for download.
+  Table cells are flattened before PDF rendering because `fpdf2`'s `write_html`
+  raises on mixed content inside a `<td>`, which real itineraries hit via
+  booking links.
 
 ---
 
@@ -211,21 +246,27 @@ travel-planner-agents/
 │   ├── agents/
 │   │   ├── base_agent.py        ← shared contract + ask_claude_json + safe_run
 │   │   ├── orchestrator.py      ← Claude-powered final assembly
+│   │   ├── assembly.py          ← commit rows → TravelPlan / budget / export inputs
 │   │   ├── country_agent.py     ← Claude + live travel advisories
 │   │   ├── city_agent.py        ← Claude, cities within the chosen country
 │   │   ├── weather_agent.py     ← Open-Meteo forecast / seasonal proxy
 │   │   ├── flight_agent.py      ← Skyscanner search (roundtrip origin↔hub)
+│   │   ├── intercity_agent.py   ← hub↔spoke travel, Claude + web search
 │   │   ├── hotel_agent.py       ← Booking.com + property type filter
 │   │   ├── airbnb_agent.py      ← Airbnb listings + combined results
 │   │   ├── activities_agent.py  ← Claude; preference / regenerate / expand
+│   │   ├── plan_edit_agent.py   ← free-text daily-plan edits → operations
 │   │   ├── budget_agent.py      ← aggregates all agent results
 │   │   └── options_adapter.py   ← wizard commit state → TravelPlan agents
 │   ├── api/
 │   │   └── routes/
 │   │       ├── auth.py          ← register / login
-│   │       ├── trips.py         ← create / list / get / transition
+│   │       ├── trips.py         ← create / list / get / delete / transition
 │   │       ├── stage_options.py ← runs an agent for one wizard stage
-│   │       └── weather.py       ← per-day forecast for the hub
+│   │       ├── weather.py       ← per-day forecast for the hub
+│   │       ├── assemble.py      ← generate the final itinerary (no persist)
+│   │       ├── export.py        ← download the confirmed plan (md / pdf)
+│   │       └── plan_edit.py     ← interpret a free-text plan edit as ops
 │   ├── auth/
 │   │   └── jwt.py               ← token creation + get_current_user
 │   ├── state/
@@ -233,7 +274,8 @@ travel-planner-agents/
 │   │   ├── enums.py             ← CommitType, stage enums, TripStatus
 │   │   ├── position.py          ← Position + flattened_sequence()
 │   │   ├── transition.py        ← COMMIT/SKIP/FORWARD/BACK + validation
-│   │   └── schemas.py           ← commit_data payload schemas per stage
+│   │   ├── schemas.py           ← commit_data payload schemas per stage
+│   │   └── plan_export.py       ← confirmed plan → Markdown / PDF (pure)
 │   ├── db/
 │   │   ├── base.py              ← async engine, session factory, get_db
 │   │   ├── models.py            ← User, Trip, Stop, TripStageCommit, StopStageCommit
@@ -244,6 +286,7 @@ travel-planner-agents/
 │   ├── config/
 │   │   ├── settings.py          ← environment variable loader + feature flags
 │   │   └── logging_config.py    ← reclaims root logger after Alembic's fileConfig
+│   ├── assets/fonts/            ← vendored DejaVu faces (PDF export, Cyrillic)
 │   └── main.py                  ← FastAPI entrypoint (lifespan, CORS, routers)
 ├── frontend/
 │   ├── src/
@@ -254,10 +297,12 @@ travel-planner-agents/
 │   │   │   ├── auth/            ← AuthScreen
 │   │   │   ├── background/      ← TorontoSkyline, AnimatedElements
 │   │   │   ├── layout/          ← AppShell, Sidebar
+│   │   │   ├── plans/           ← TripListScreen (resume, multi-select delete)
 │   │   │   └── wizard/          ← WizardRenderer + one component per stage
 │   │   └── i18n/                ← EN / FR / RU translations
 │   └── package.json
 ├── alembic/versions/           ← schema migrations
+├── scripts/                    ← one-off asset tooling
 ├── docs/
 │   ├── rebuild_plan.md         ← the hub-and-spoke redesign plan (25 steps)
 │   ├── trip_state_model.md     ← original wizard design spec
@@ -278,9 +323,13 @@ travel-planner-agents/
 | `POST` | `/trips/` | Create trip + one unvisited commit per trip-level stage |
 | `GET` | `/trips/` | List the caller's trips |
 | `GET` | `/trips/{id}` | Full trip state (position, commits, stops) |
+| `DELETE` | `/trips/{id}` | Delete a trip; cascades to stops and commits |
 | `POST` | `/trips/{id}/transition` | COMMIT / SKIP / FORWARD / BACK |
 | `POST` | `/trips/{id}/stages/{stage}/options` | Run the stage's agent, return options |
 | `GET` | `/trips/{id}/weather` | Per-day forecast for the hub city |
+| `POST` | `/trips/{id}/assemble` | Generate the final itinerary (returns, doesn't save) |
+| `POST` | `/trips/{id}/plan-edit` | Interpret a free-text daily-plan edit as operations |
+| `GET` | `/trips/{id}/export?format=md\|pdf` | Download the confirmed plan |
 | `GET` | `/health` | Liveness check |
 
 Interactive docs at `/docs` (Swagger, with an Authorize button) and `/redoc`.
@@ -309,6 +358,9 @@ creation; spokes stay NULL until the intercity stage fills them. Each commit row
 carries `commit_type` (chosen / self_provided / skipped / unvisited),
 `commit_data` (JSONB, validated by a Pydantic schema on write),
 `self_provided_text`, and `completed`.
+
+Commit rows are pre-created as `unvisited` when the trip is created, so
+`updated_at` — not `created_at` — is when a stage was actually committed.
 
 ---
 
@@ -401,6 +453,22 @@ python main.py
 
 ---
 
+## PDF export and fonts
+
+`fpdf2` ships no fonts, so the DejaVu Sans faces used by the PDF renderer are
+vendored in `src/assets/fonts/` (with their license). The alternative — an
+`apt`/`brew` install plus path discovery — differs between a developer's laptop
+and a container, and the failure mode is a runtime `FileNotFoundError` rather
+than a build error.
+
+DejaVu covers Latin *and* Cyrillic, so a Russian-language plan will render
+correctly once agent output is localised.
+
+Both `fpdf2` and `markdown` are pure Python; the deployment image needs no
+system packages for PDF generation.
+
+---
+
 ## Tests
 
 ```bash
@@ -421,15 +489,21 @@ Honest notes on what isn't finished, kept here rather than in a private list.
   502, but flights / hotels / activities still degrade to an empty (or fallback)
   list, so a genuine failure there is only visible in the server log, not the
   response.
-- **Geocoding is unkeyed.** The weather agent uses Nominatim, which is rate-
-  limited and has no API key. Fine for development; deployment needs a geocoder
-  with a real quota.
-- **Trips are auto-created on load.** The frontend mints a trip as soon as you
-  authenticate — a placeholder for the trip-list + resume flow.
+- **Geocoding is unkeyed and uncached.** The weather agent uses Nominatim, which
+  is rate-limited and has no API key. Fine for development; deployment needs
+  caching and a geocoder with a real quota.
+- **Mock hotel prices are unrealistic.** The Booking.com mock returns nightly
+  rates well above plausible, which skews the budget when the flag is off.
 - **Agent output is English only.** A `language` field is threaded from the UI
-  through to the request, defaulting to `en`; wiring the agent *prompts* to write
-  their prose in French and Russian is pending. Advisory notes stay English (they
-  come from the State Dept feed, not the model).
+  through to `TravelRequest`, defaulting to `en`; wiring the agent *prompts* to
+  write their prose in French and Russian is pending. Advisory notes stay
+  English by design (they're quoted from the State Dept feed, not authored).
+- **Export filenames are ASCII-slugged.** Non-Latin country or city names slug
+  to nothing and fall back to a generic filename. Latent until agent output is
+  localised; the document contents are fully Unicode either way.
+- **PDF pagination can leave a sparse page.** `fpdf2`'s `write_html` breaks
+  early when a heading lands at the bottom margin. Cosmetic — no content is
+  lost.
 
 ---
 
@@ -446,32 +520,41 @@ full 25-step breakdown.
 - [x] Shared defensive JSON parsing (`ask_claude_json`)
 - [x] Discovery failures surface as 502, not silent empty lists
 
-### Track 1 — single city, end to end 🚧
+### Track 1 — single city, end to end ✅
 - [x] Country + City wizard stages (split from the old Destination stage)
 - [x] Flights / accommodation / daily-plan moved to trip-level
 - [x] Activities — preference, regenerate, expand, ordered picks
 - [x] Real weather in the daily plan (live + seasonal proxy)
-- [ ] `budget_agent.aggregate()` — shared by CLI and wizard
-- [ ] `POST /trips/{id}/assemble` + final itinerary rendering
-- [ ] Final stage — renders, regenerates, commits
+- [x] `budget_agent.aggregate()` — shared by CLI and wizard
+- [x] `POST /trips/{id}/assemble` + final itinerary rendering
+- [x] Final stage — renders, regenerates, commits
 
-### Track 2 — multi-city 📋
-- [ ] "Add another city" — spoke list with reorder/remove
-- [ ] Intercity agent — hub↔spoke travel, web search + citations
-- [ ] Intercity stage — constrained date pickers
-- [ ] Activities loop across stops; assembly renders spokes
+### Track 2 — multi-city ✅
+- [x] "Add another city" — spoke list with reorder/remove
+- [x] Intercity agent — hub↔spoke travel, web search + citations
+- [x] Intercity stage — constrained date pickers
+- [x] Activities loop across stops; assembly renders spokes
+- [x] Budget includes intercity legs
 
-### Track 3 — plans and sharing 📋
-- [ ] Trip list + resume (replaces auto-create)
-- [ ] Download the plan
-- [ ] Google Calendar export
-- [ ] Email sharing (confirm-before-send)
-- [ ] Free-text chat edits to the daily plan
+### Track 3 — plans and sharing ✅
+- [x] Trip list + resume (replaces auto-create)
+- [x] Delete plans — multi-select, two-step confirm
+- [x] Download the plan — Markdown and PDF
+- [x] Free-text chat edits to the daily plan
+- [x] Manual moves — activities between days, same-city only
 
 ### Track 4 — deployment 📋
-- [ ] Compress background images (PNG → WebP)
-- [ ] Keyed geocoding
+- [x] Compress background images (PNG → WebP, ~93% smaller)
+- [ ] Mock hotel price correction
+- [ ] Geocode caching, then keyed geocoding
 - [ ] Dockerized deployment
+
+### Deferred polish 📋
+- [ ] Regenerate + preference text on the country stage
+- [ ] Type-your-own country / city (`self_provided` commit path)
+- [ ] Agent prose in French and Russian
+- [ ] Google Calendar export
+- [ ] Email sharing (confirm-before-send)
 
 ---
 
@@ -479,7 +562,7 @@ full 25-step breakdown.
 
 **Backend** — Python 3.13 · Anthropic Claude (claude-sonnet-4-6) · FastAPI ·
 PostgreSQL 16 · SQLAlchemy 2.x async (`asyncpg`) · Alembic · Pydantic v2 ·
-python-jose (JWT) · bcrypt · httpx · geopy · pytest
+python-jose (JWT) · bcrypt · httpx · geopy · fpdf2 · markdown · pytest
 
 **Frontend** — React + Vite · Tailwind CSS · Framer Motion · Zustand ·
 react-i18next (EN / FR / RU)
