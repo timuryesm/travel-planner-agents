@@ -14,8 +14,16 @@
 //   createTrip, listTrips,
 //   getTrip, transition        → /trips/*
 
+// Unset → localhost:8000, the dev-server default. Set to "" → same-origin
+// relative paths, which is what the Docker image needs: FastAPI serves the
+// built frontend, so /trips/... resolves against whatever host it's on.
+// The || fallback couldn't express that — an empty string is falsy, so
+// same-origin was indistinguishable from unset.
+const _rawBase = import.meta.env.VITE_API_BASE_URL
 const BASE_URL =
-  import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') || 'http://localhost:8000'
+  _rawBase === undefined || _rawBase === null
+    ? 'http://localhost:8000'
+    : _rawBase.replace(/\/+$/, '')
 
 const TOKEN_KEY = 'tp-token'
 

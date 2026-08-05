@@ -31,6 +31,7 @@ from typing import AsyncGenerator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from src.config.logging_config import configure_logging
 from src.api.routes.auth import router as auth_router
@@ -125,3 +126,20 @@ app.include_router(plan_edit.router)
 async def health() -> dict[str, str]:
     """Returns 200 OK. Used by load balancers and deployment health checks."""
     return {"status": "ok"}
+
+# ── Frontend ──────────────────────────────────────────────────────────────────
+# The Docker image builds the React app into ./static and serves it from here,
+# so the API and the UI share one origin and one port. Mounted LAST: a mount at
+# "/" matches anything the routes above didn't, so registering it earlier would
+# shadow every API route and /docs.
+#
+# Guarded on existence because a local checkout has no ./static — you run Vite
+# separately. StaticFiles raises at startup if the directory is missing, which
+# would turn "I haven't built the frontend" into "the server won't boot".
+#
+# html=True serves index.html at "/". No SPA fallback route is needed: the app
+# switches views from store state, not from URLs, so there is no /trips/123
+# style deep link for the browser to request.
+_STATIC_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
+if os.path.isdir(_STATIC_DIR):
+    app.mount("/", StaticFiles(directory=_STATIC_DIR, html=True), name="frontend")

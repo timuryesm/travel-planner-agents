@@ -1,0 +1,45 @@
+# Keep the build context small and, more importantly, keep secrets and local
+# state out of the image. Everything here is either rebuilt inside the image,
+# irrelevant to it, or must never leave the machine.
+
+# Secrets — .env holds real API keys. .env.example is intentionally NOT
+# ignored: it documents what the deployment needs.
+.env
+.env.*
+!.env.example
+
+# Python local state
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# Frontend — node_modules is reinstalled by `npm ci` in the build stage, and
+# dist/ is rebuilt there too. Copying a local dist/ would let a stale build
+# win over the fresh one.
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.*
+
+# Tests and tooling: not run inside the image, and excluding them keeps the
+# runtime layer smaller.
+tests/
+scripts/
+
+# Version control and editor state
+.git/
+.gitignore
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Docs and CI don't affect the running app
+docs/
+README.md
+LICENSE

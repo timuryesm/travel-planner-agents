@@ -1,0 +1,54 @@
+# Local orchestration: the app image plus the Postgres it needs.
+#
+#     docker compose up --build
+#     open http://localhost:8000
+#
+# This is for running the whole thing locally the way it runs deployed. It is
+# NOT the development loop — for that, keep using `uvicorn --reload` and
+# `npm run dev`, which give instant feedback. Use this to verify the image
+# before pushing, and to hand someone a one-command way to try the project.
+#
+# In production only the `app` service is deployed; the platform provides a
+# managed Postgres and injects DATABASE_URL.
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: travel
+      POSTGRES_PASSWORD: travel
+      POSTGRES_DB: travel_planner
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      # The app runs Alembic migrations at startup, so it must not start until
+      # Postgres is actually accepting connections — "container started" is not
+      # the same thing, and the difference shows up as a connection refused on
+      # first boot.
+      test: ["CMD-SHELL", "pg_isready -U travel -d travel_planner"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      # `db` is the service name — Docker's internal DNS resolves it. This is
+      # why it can't just be copied from .env, which points at localhost.
+      DATABASE_URL: postgresql+asyncpg://travel:travel@db:5432/travel_planner
+      # Everything else comes from .env, which is not baked into the image.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      RAPIDAPI_KEY: ${RAPIDAPI_KEY:-}
+      SECRET_KEY: ${SECRET_KEY}
+      INVITE_CODE: ${INVITE_CODE:-}
+      SKYSCANNER_ENABLED: ${SKYSCANNER_ENABLED:-False}
+      BOOKING_ENABLED: ${BOOKING_ENABLED:-False}
+      AIRBNB_ENABLED: ${AIRBNB_ENABLED:-False}
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
