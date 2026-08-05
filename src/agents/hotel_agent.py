@@ -304,12 +304,55 @@ class HotelAgent(BaseAgent):
             ["City Centre", "Old Town", "Downtown", "Harbour", "North District", "South District"],
         )
 
+    # Fraction of the trip budget that accommodation should aim to consume.
+    # TARGET is what the agent spends by default; CAP is the most it will
+    # spend when nothing decent fits under TARGET. The gap between them is
+    # deliberate: a traveler who says "$5000" does not mean "spend $1750 on
+    # hotels because that is what's allowed".
+    HOTEL_BUDGET_TARGET = 0.22
+    HOTEL_BUDGET_CAP = 0.35
+
     def _select_best(
         self, options: list[HotelOption], budget_usd: float
     ) -> HotelOption | None:
+        """
+        Pick a sensible default stay, not the most expensive affordable one.
+
+        The old rule maximised stars, and stars rise with price in both the
+        mock templates and real Booking results — so it always spent as close
+        to the ceiling as it could, and when NOTHING was affordable it fell
+        through to the whole list and picked the priciest property on it.
+        A traveler whose budget is already tight was handed the Luxury Hotel.
+
+        Three tiers, tried in order:
+
+          1. best-rated within TARGET   — the normal case
+          2. best-rated within CAP      — nothing decent at target; stretch
+          3. cheapest option            — nothing fits at all
+
+        Tier 3 is the important one. Over budget is sometimes unavoidable
+        (a long trip in an expensive city), but the honest response is the
+        cheapest bed available, and the budget notes already say when the
+        total exceeds what the user asked for.
+        """
         if not options:
             return None
-        hotel_budget = budget_usd * 0.35
-        affordable   = [h for h in options if h.total_price_usd <= hotel_budget]
-        candidates   = affordable if affordable else options
-        return max(candidates, key=lambda h: (h.stars or 0, -h.total_price_usd))
+
+        def best_rated(pool: list[HotelOption]) -> HotelOption:
+            # Cheapest wins ties, so two 4-star options don't come down to
+            # list order.
+            return max(pool, key=lambda h: ((h.stars or 0), -h.total_price_usd))
+
+        within_target = [
+            h for h in options if h.total_price_usd <= budget_usd * self.HOTEL_BUDGET_TARGET
+        ]
+        if within_target:
+            return best_rated(within_target)
+
+        within_cap = [
+            h for h in options if h.total_price_usd <= budget_usd * self.HOTEL_BUDGET_CAP
+        ]
+        if within_cap:
+            return best_rated(within_cap)
+
+        return min(options, key=lambda h: h.total_price_usd)
