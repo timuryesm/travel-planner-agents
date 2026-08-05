@@ -91,7 +91,8 @@
     "accommodation": "Stay",
     "activities": "Activities",
     "daily_plan": "Daily plan",
-    "final": "Your plan"
+    "final": "Your plan",
+    "intercity": "Day trips"
   },
   "stageStatus": {
     "unvisited": "Not started",
