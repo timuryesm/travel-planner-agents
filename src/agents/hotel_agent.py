@@ -49,7 +49,11 @@ class HotelAgent(BaseAgent):
                     req.return_date, nights, req.budget_usd, acc,
                 )
         else:
-            self.logger.info("No RapidAPI key — using mock accommodation data")
+            reason = (
+                "no RapidAPI key" if not settings.RAPIDAPI_KEY
+                else "BOOKING_ENABLED is off"
+            )
+            self.logger.info(f"Using mock accommodation data — {reason}")
             options = self._mock_hotels(
                 req.destination, req.departure_date,
                 req.return_date, nights, req.budget_usd, acc,

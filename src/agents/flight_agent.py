@@ -65,7 +65,11 @@ class FlightAgent(BaseAgent):
                     req.trip_type, req.budget_usd, req.travelers,
                 )
         else:
-            self.logger.info("No RapidAPI key — using mock flight data")
+            reason = (
+                "no RapidAPI key" if not settings.RAPIDAPI_KEY
+                else "SKYSCANNER_ENABLED is off"
+            )
+            self.logger.info(f"Using mock flight data — {reason}")
             options = self._mock_flights(
                 req.origin, req.destination,
                 req.departure_date, req.return_date,

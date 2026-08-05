@@ -41,7 +41,11 @@ class AirbnbAgent(BaseAgent):
                     req.budget_usd, req.accommodation_type,
                 )
         else:
-            self.logger.info("No RapidAPI key — using mock Airbnb data")
+            reason = (
+                "no RapidAPI key" if not settings.RAPIDAPI_KEY
+                else "AIRBNB_ENABLED is off"
+            )
+            self.logger.info(f"Using mock Airbnb data — {reason}")
             options = self._mock_listings(
                 req.destination, req.departure_date,
                 req.return_date, nights,
