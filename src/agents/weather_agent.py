@@ -4,6 +4,7 @@ from datetime import date, timedelta
 from geopy.geocoders import Nominatim
 from src.agents.base_agent import BaseAgent
 from src.state.travel_plan import TravelPlan, WeatherSummary
+from src.tools.geocode_lookup import geocode
 
 WMO_CODES: dict[int, str] = {
     0:  "Clear sky",
@@ -44,11 +45,12 @@ class WeatherAgent(BaseAgent):
         return plan
 
     def _geocode(self, city: str) -> tuple[float, float]:
-        geolocator = Nominatim(user_agent="travel-planner-agents")
-        location = geolocator.geocode(city)
-        if not location:
-            raise ValueError(f"Could not geocode city: '{city}'")
-        return location.latitude, location.longitude
+        # Cached and rate-limited — see tools/geocode_lookup. This used to
+        # build a fresh Nominatim client per call, so StrictMode's double
+        # mount and uvicorn --reload between them meant the same city was
+        # geocoded repeatedly against a service that allows one request
+        # per second.
+        return geocode(city)
 
 
     def _fetch_forecast(self, lat: float, lon: float, start: date, end: date) -> tuple[dict, bool]:
