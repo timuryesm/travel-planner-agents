@@ -218,7 +218,7 @@ instruction.
 
 ## Agent JSON, weather, and advisories — the tricky bits
 
-Four subsystems earned dedicated handling; each is documented at its source.
+Five subsystems earned dedicated handling; each is documented at its source.
 
 - **`tools/advisory_lookup.py`** — caches the State Dept feed (one document
   covering every country) on disk with a 6-hour TTL, matches countries by exact
@@ -229,6 +229,11 @@ Four subsystems earned dedicated handling; each is documented at its source.
   the trip is within ~15 days, otherwise last year's same dates as a seasonal
   proxy (labelled *typical*). The route re-keys the proxy onto the trip's actual
   dates so the daily plan can look weather up by date.
+- **`tools/geocode_lookup.py`** — caches Nominatim results on disk with no
+  TTL (coordinates don't change), spaces requests to respect the one-per-second
+  policy, and never caches a failure — a rate-limit block and "no such place"
+  are indistinguishable in the response, so a negative cache would poison a
+  city permanently.
 - **`agents/base_agent.py`** — `ask_claude_json` and `safe_run`, described
   above.
 - **`state/plan_export.py`** — wraps the confirmed itinerary for download.
@@ -282,7 +287,8 @@ travel-planner-agents/
 │   │   └── trip_repository.py   ← async DB layer (create_trip, load_trip, …)
 │   ├── tools/
 │   │   ├── airport_lookup.py    ← IATA code lookup (API + fallback table)
-│   │   └── advisory_lookup.py   ← cached State Dept advisory feed
+│   │   ├── advisory_lookup.py   ← cached State Dept advisory feed
+│   │   └── geocode_lookup.py    ← cached, rate-limited Nominatim geocoding
 │   ├── config/
 │   │   ├── settings.py          ← environment variable loader + feature flags
 │   │   └── logging_config.py    ← reclaims root logger after Alembic's fileConfig
@@ -489,11 +495,29 @@ Honest notes on what isn't finished, kept here rather than in a private list.
   502, but flights / hotels / activities still degrade to an empty (or fallback)
   list, so a genuine failure there is only visible in the server log, not the
   response.
-- **Geocoding is unkeyed and uncached.** The weather agent uses Nominatim, which
-  is rate-limited and has no API key. Fine for development; deployment needs
-  caching and a geocoder with a real quota.
-- **Mock hotel prices are unrealistic.** The Booking.com mock returns nightly
-  rates well above plausible, which skews the budget when the flag is off.
+- **Geocoding is unkeyed.** Results are now cached on disk and rate-limited,
+  which removes the self-inflicted request volume, but Nominatim still has no
+  API key and no quota guarantee. A public deployment wants a keyed geocoder.
+- **Mock flight estimates only know Toronto routes.** `_estimate_route` has a
+  table of Toronto-prefixed long- and medium-haul routes; everything else gets
+  a 550 USD / 9-hour default, which is roughly double reality for a Caribbean
+  flight and feeds straight into the budget.
+- **Mock flights share one booking link.** The URL is built from cities and
+  dates, so every option points at the same search. A per-option link to the
+  actual itinerary requires Skyscanner's own `bookingUrl`, which exists only
+  on the flag-on path.
+- **Cities outside the code tables get no deep link.** Skyscanner deep links
+  need a city code; for an unknown city the booking URL degrades to the
+  Skyscanner homepage rather than guessing a code and pointing at the wrong
+  route.
+- **Degrading fetchers ignore `plan.errors`.** Flights, accommodation,
+  activities and intercity correctly degrade to a fallback rather than 502 —
+  but an agent that recorded an error and produced nothing logs nothing at the
+  adapter level, which is how an aborted flights stage went unnoticed.
+- **A trip straddling the forecast horizon loses its live forecast.** Open-Meteo
+  400s a range running past its ~16-day window, so the agent requires both ends
+  inside it; a trip starting in 12 days and ending in 21 falls back entirely to
+  the seasonal proxy instead of splitting the range.
 - **Agent output is English only.** A `language` field is threaded from the UI
   through to `TravelRequest`, defaulting to `en`; wiring the agent *prompts* to
   write their prose in French and Russian is pending. Advisory notes stay
@@ -545,8 +569,9 @@ full 25-step breakdown.
 
 ### Track 4 — deployment 📋
 - [x] Compress background images (PNG → WebP, ~93% smaller)
-- [ ] Mock hotel price correction
-- [ ] Geocode caching, then keyed geocoding
+- [x] Mock hotel price correction
+- [x] Geocode caching
+- [ ] Optionally enable the real RapidAPI keys
 - [ ] Dockerized deployment
 
 ### Deferred polish 📋
@@ -555,6 +580,11 @@ full 25-step breakdown.
 - [ ] Agent prose in French and Russian
 - [ ] Google Calendar export
 - [ ] Email sharing (confirm-before-send)
+- [ ] Keyed geocoding with a real quota
+- [ ] Split forecast: live for the near days, seasonal for the rest
+- [ ] Distance-based mock flight estimates (the geocode cache has the coords)
+- [ ] Per-option Skyscanner booking links (flag-on path)
+- [ ] Log `plan.errors` in the degrading option fetchers
 
 ---
 
