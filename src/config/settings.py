@@ -21,6 +21,15 @@ class Settings:
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
     RAPIDAPI_KEY: str = os.getenv("RAPIDAPI_KEY", "")
 
+    # Gate on /auth/register. Empty (the default) means registration is OPEN,
+    # which keeps local dev and a fresh clone working with no setup. Set it in
+    # the deployed environment: the app spends real Anthropic credits on every
+    # trip, and an open register endpoint on a public URL is an open wallet.
+    #
+    # Fails OPEN by design — forgetting to set it does not lock anyone out, it
+    # leaves the door unlocked. Verify it after every deploy.
+    INVITE_CODE: str = os.getenv("INVITE_CODE", "")
+
     # Per-provider switches for the RapidAPI integrations. Env-driven because
     # a container cannot edit its own source: these were hardcoded False with
     # a "TEMP: quota reached" comment, so setting them in .env did nothing and

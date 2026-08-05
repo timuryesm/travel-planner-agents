@@ -48,8 +48,11 @@
     "signUpLink": "Sign up",
     "signInLink": "Sign in",
     "logout": "Log out",
+    "inviteCode": "Invite code",
+    "inviteCodePlaceholder": "Leave blank if you weren't given one",
     "errors": {
       "invalidCredentials": "Incorrect email or password.",
+      "invalidInviteCode": "That invite code isn't valid.",
       "emailTaken": "An account with that email already exists.",
       "emailInvalid": "Please enter a valid email address.",
       "passwordTooShort": "Password must be at least 8 characters.",

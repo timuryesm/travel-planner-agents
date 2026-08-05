@@ -62,6 +62,9 @@ export class ApiError extends Error {
 // Map an HTTP response to a stable error code the UI can translate.
 function codeForResponse(status, detail) {
   if (status === 401) return 'sessionExpired'
+  // 403 = registration is gated and the supplied invite code was wrong. The
+  // only route that returns it today.
+  if (status === 403) return 'invalidInviteCode'
   // 409 is NOT emailTaken any more. _build_context returns it for wizard
   // ordering ("Setup must be completed", "A country must be chosen"), so a
   // blanket mapping told users their email was taken when they'd skipped a
@@ -140,11 +143,11 @@ async function request(path, { method = 'GET', body, auth = true, form = false }
 
 // POST /auth/register  → { access_token, token_type, user_id, email }
 // 409 here means the email is taken — the one route where that's true.
-export async function register(email, password) {
+export async function register(email, password, inviteCode = null) {
   try {
     const data = await request('/auth/register', {
       method: 'POST',
-      body: { email, password },
+      body: { email, password, invite_code: inviteCode },
       auth: false,
     })
     if (data?.access_token) setToken(data.access_token)

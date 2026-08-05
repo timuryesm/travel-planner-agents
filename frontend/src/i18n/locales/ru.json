@@ -48,8 +48,11 @@
     "signUpLink": "Зарегистрироваться",
     "signInLink": "Войти",
     "logout": "Выйти",
+    "inviteCode": "Код приглашения",
+    "inviteCodePlaceholder": "Оставьте пустым, если у вас его нет",
     "errors": {
       "invalidCredentials": "Неверная эл. почта или пароль.",
+      "invalidInviteCode": "Неверный код приглашения.",
       "emailTaken": "Аккаунт с такой эл. почтой уже существует.",
       "emailInvalid": "Введите корректный адрес эл. почты.",
       "passwordTooShort": "Пароль должен содержать не менее 8 символов.",

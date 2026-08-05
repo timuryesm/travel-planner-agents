@@ -28,6 +28,7 @@ export default function AuthScreen({ mode, toggleMode, isAuto, onAuthenticated }
   const [screen, setScreen] = useState('login')   // 'login' | 'register'
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [inviteCode, setInviteCode] = useState('')
   const [error, setError] = useState(null)         // i18n key under auth.errors
   const [submitting, setSubmitting] = useState(false)
 
@@ -38,6 +39,7 @@ export default function AuthScreen({ mode, toggleMode, isAuto, onAuthenticated }
     if (err instanceof ApiError) {
       const map = {
         invalidCredentials: 'auth.errors.invalidCredentials',
+        invalidInviteCode: 'auth.errors.invalidInviteCode',
         emailTaken: 'auth.errors.emailTaken',
         networkError: 'auth.errors.networkError',
         validation: 'auth.errors.emailInvalid',
@@ -68,7 +70,7 @@ export default function AuthScreen({ mode, toggleMode, isAuto, onAuthenticated }
     try {
       const data = isLogin
         ? await apiLogin(email, password)
-        : await apiRegister(email, password)
+        : await apiRegister(email, password, inviteCode)
       onAuthenticated(data)
     } catch (err) {
       setError(messageForError(err))
@@ -80,6 +82,7 @@ export default function AuthScreen({ mode, toggleMode, isAuto, onAuthenticated }
   function switchScreen() {
     setScreen(isLogin ? 'register' : 'login')
     setError(null)
+    setInviteCode('')
   }
 
   return (
@@ -188,6 +191,33 @@ export default function AuthScreen({ mode, toggleMode, isAuto, onAuthenticated }
                 onBlur={(e) => (e.target.style.borderColor = 'rgba(255,255,255,0.12)')}
               />
             </div>
+
+            {/* Invite code — register only. Always rendered rather than
+                conditioned on a config lookup: an empty INVITE_CODE means the
+                backend ignores it, so leaving this blank works locally and in
+                any ungated deployment. */}
+            {!isLogin && (
+              <div>
+                <label className="block text-white/70 text-xs font-medium mb-1.5">
+                  {t('auth.inviteCode')}
+                </label>
+                <input
+                  type="text"
+                  value={inviteCode}
+                  onChange={(e) => setInviteCode(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
+                  placeholder={t('auth.inviteCodePlaceholder')}
+                  autoComplete="off"
+                  className="w-full rounded-lg px-3.5 py-2.5 text-sm text-white placeholder-white/30 outline-none transition-colors"
+                  style={{
+                    background: 'rgba(0,0,0,0.25)',
+                    border: '1px solid rgba(255,255,255,0.12)',
+                  }}
+                  onFocus={(e) => (e.target.style.borderColor = 'rgba(45,212,191,0.5)')}
+                  onBlur={(e) => (e.target.style.borderColor = 'rgba(255,255,255,0.12)')}
+                />
+              </div>
+            )}
 
             {/* Error message */}
             <AnimatePresence>

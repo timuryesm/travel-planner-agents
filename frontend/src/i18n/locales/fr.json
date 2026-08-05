@@ -48,8 +48,11 @@
     "signUpLink": "S'inscrire",
     "signInLink": "Se connecter",
     "logout": "Se déconnecter",
+    "inviteCode": "Code d'invitation",
+    "inviteCodePlaceholder": "Laissez vide si vous n'en avez pas",
     "errors": {
       "invalidCredentials": "Courriel ou mot de passe incorrect.",
+      "invalidInviteCode": "Ce code d'invitation n'est pas valide.",
       "emailTaken": "Un compte existe déjà avec ce courriel.",
       "emailInvalid": "Veuillez saisir une adresse courriel valide.",
       "passwordTooShort": "Le mot de passe doit comporter au moins 8 caractères.",

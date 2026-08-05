@@ -18,6 +18,7 @@ register and login with identical token-storage logic.
 from __future__ import annotations
 
 import uuid
+import secrets
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
@@ -29,6 +30,7 @@ from src.auth.jwt import create_access_token
 from src.auth.password import hash_password, verify_password
 from src.db.base import get_db
 from src.db.models import User
+from src.config.settings import settings
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -38,6 +40,9 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 class RegisterRequest(BaseModel):
     email: str
     password: str
+    # Optional so a deployment with no INVITE_CODE set (and every local clone)
+    # keeps working with the same request body it always used.
+    invite_code: str | None = None
 
 
 class AuthResponse(BaseModel):
@@ -66,6 +71,22 @@ async def register(
     409 if the email is already registered.
     The password is hashed before storage — the plaintext is never persisted.
     """
+    # Registration gate. Checked BEFORE the email lookup so a wrong code
+    # cannot be used to probe which addresses are already registered.
+    #
+    # settings.INVITE_CODE empty means open registration — the default, so a
+    # fresh clone works with no setup. Set it in any deployed environment: the
+    # app spends real Anthropic credits per trip, and an open register endpoint
+    # on a public URL is an open wallet.
+    if settings.INVITE_CODE:
+        supplied = (body.invite_code or "").strip()
+        # compare_digest rather than == so the comparison time doesn't vary
+        # with how many leading characters happen to match.
+        if not secrets.compare_digest(supplied, settings.INVITE_CODE):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="A valid invite code is required to create an account.",
+            )
     existing = await db.execute(select(User).where(User.email == body.email))
     if existing.scalar_one_or_none() is not None:
         raise HTTPException(
