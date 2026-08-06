@@ -10,11 +10,15 @@ Built as a portfolio project targeting production-readiness: clean
 architecture, resumable sessions, real external APIs, and a multilingual React
 frontend (English / French / Russian).
 
-> **Status:** the hub-and-spoke redesign is complete end to end. A trip can be
-> planned from setup through a rendered itinerary, across one city or several,
-> saved, resumed, edited, and downloaded as Markdown or PDF. Remaining work is
-> deployment and polish — see the roadmap. The commit history is the source of
-> truth for what's done.
+> **Status:** complete and deployed. A trip can be planned from setup through a
+> rendered itinerary, across one city or several, saved, resumed, edited, and
+> downloaded as Markdown or PDF. Remaining work is polish — see the roadmap.
+> The commit history is the source of truth for what's done.
+
+**Live demo:** https://travel-planner-agents-production.up.railway.app
+
+Registration is gated by an invite code, because every trip spends real
+Anthropic credits. Ask if you'd like one.
 
 ---
 
@@ -475,6 +479,56 @@ system packages for PDF generation.
 
 ---
 
+## Deployment
+
+One image serves both the API and the built frontend. The alternative —
+separate backend and nginx containers — buys faster partial rebuilds and costs
+a second Dockerfile, an nginx config, live CORS in production, and two things
+to keep in sync. Sharing an origin also removes cross-origin entirely once
+deployed: `ALLOWED_ORIGINS` matters only against the Vite dev server.
+
+Run the deployed shape locally:
+
+```bash
+docker compose up --build
+open http://localhost:8000
+```
+
+That is for verifying a build, not for developing — `uvicorn --reload` and
+`npm run dev` remain the development loop, and a container rebuild is only
+needed when deploying a change.
+
+The compose Postgres publishes no host port, so it doesn't collide with a
+development database already on 5432. In production only the app container is
+deployed; the platform provides managed Postgres.
+
+**Environment variables in a deployed environment** — the same names as `.env`,
+set in the platform's dashboard rather than a file:
+
+| Variable | Notes |
+|---|---|
+| `DATABASE_URL` | On Railway, the reference `${{Postgres.DATABASE_URL}}` rather than a pasted string, so it re-resolves if the database is recreated |
+| `SECRET_KEY` | Generate a fresh one; it signs JWTs |
+| `ANTHROPIC_API_KEY` | Required |
+| `RAPIDAPI_KEY` | Optional — the mock paths run without it |
+| `INVITE_CODE` | **Set this.** Empty means open registration |
+| `SKYSCANNER_ENABLED` / `BOOKING_ENABLED` / `AIRBNB_ENABLED` | Default `False` |
+
+Managed providers hand out `postgresql://` with no driver named;
+`src/db/base.py` normalises it to `postgresql+asyncpg://` in code rather than
+requiring a hand-edited URL, which would break the reference above.
+
+Migrations run in the FastAPI lifespan, so a deploy needs no separate step —
+but it also means a database that isn't reachable stops the container rather
+than degrading.
+
+**Cost note.** The app spends real Anthropic credits per trip: a country agent,
+a city agent, activities per city, and a ~4k-token assembly call, each
+repeatable via Regenerate. `INVITE_CODE` plus a spend limit on the Anthropic
+console are what stand between a public URL and an open wallet.
+
+---
+
 ## Tests
 
 ```bash
@@ -510,6 +564,12 @@ Honest notes on what isn't finished, kept here rather than in a private list.
   need a city code; for an unknown city the booking URL degrades to the
   Skyscanner homepage rather than guessing a code and pointing at the wrong
   route.
+- **Airbnb is unreachable from the wizard.** `options_adapter` never calls
+  `AirbnbAgent`, so `AIRBNB_ENABLED` currently changes nothing. The agent
+  works and is tested; it has no route into the UI.
+- **Caches are ephemeral in a container.** The advisory and geocode caches
+  live under the system temp directory, so a redeploy or a restarted replica
+  starts cold. Correct but wasteful; a mounted volume would fix it.
 - **Degrading fetchers ignore `plan.errors`.** Flights, accommodation,
   activities and intercity correctly degrade to a fallback rather than 502 —
   but an agent that recorded an error and produced nothing logs nothing at the
@@ -567,12 +627,14 @@ full 25-step breakdown.
 - [x] Free-text chat edits to the daily plan
 - [x] Manual moves — activities between days, same-city only
 
-### Track 4 — deployment 📋
+### Track 4 — deployment ✅
 - [x] Compress background images (PNG → WebP, ~93% smaller)
 - [x] Mock hotel price correction
 - [x] Geocode caching
-- [ ] Optionally enable the real RapidAPI keys
-- [ ] Dockerized deployment
+- [x] Real RapidAPI providers verified end to end (Skyscanner, Booking)
+- [x] Env-driven provider flags (were hardcoded, so unreachable)
+- [x] Invite-code gate on registration
+- [x] Dockerized deployment
 
 ### Deferred polish 📋
 - [ ] Regenerate + preference text on the country stage
@@ -585,6 +647,12 @@ full 25-step breakdown.
 - [ ] Distance-based mock flight estimates (the geocode cache has the coords)
 - [ ] Per-option Skyscanner booking links (flag-on path)
 - [ ] Log `plan.errors` in the degrading option fetchers
+- [ ] Airbnb as a provider CHOICE on the Stay stage (hotel or Airbnb, then ten
+      options from the chosen one). `AirbnbAgent` is never called from the
+      wizard today — `options_adapter` doesn't import it — and either/or needs
+      a provider field on a commit payload plus a migration, not the merge the
+      append-based code was built for
+- [ ] Rate limiting and a per-user trip quota
 
 ---
 
