@@ -48,6 +48,11 @@ if config.config_file_name is not None:
 # postgresql+asyncpg://...  →  postgresql://...  (uses psycopg2 by default)
 _async_url: str = os.environ["DATABASE_URL"]
 _sync_url: str = _async_url.replace("+asyncpg", "")
+# Legacy Heroku-style scheme; psycopg2 rejects it. Railway sends the modern
+# form, but a provider that doesn't would break migrations at startup — and
+# migrations run inside the lifespan, so that failure stops the container.
+if _sync_url.startswith("postgres://"):
+    _sync_url = "postgresql://" + _sync_url[len("postgres://"):]
 config.set_main_option("sqlalchemy.url", _sync_url)
 
 target_metadata = Base.metadata

@@ -22,7 +22,32 @@ from sqlalchemy.orm import DeclarativeBase
 
 # ── Engine ────────────────────────────────────────────────────────────────────
 
-DATABASE_URL: str = os.environ["DATABASE_URL"]
+def _normalize_async_url(raw: str) -> str:
+    """
+    Ensure the URL names the asyncpg driver.
+
+    Managed Postgres providers (Railway, Render, Heroku) hand out URLs
+    starting `postgresql://` or the legacy `postgres://`, with no driver.
+    SQLAlchemy then loads the default sync driver and create_async_engine
+    fails at import — before any handler runs, so the whole app dies at boot
+    rather than degrading.
+
+    Rewritten here rather than requiring the deployment to paste a doctored
+    URL, because the provider's value is a reference (${{Postgres.DATABASE_URL}})
+    that updates itself if the database is recreated. Hand-editing it would
+    break that.
+
+    A URL that already names a driver is left alone: `postgresql+asyncpg://`
+    passes through untouched, and so would a deliberate choice of another one.
+    """
+    if raw.startswith("postgres://"):          # legacy Heroku-style scheme
+        raw = "postgresql://" + raw[len("postgres://"):]
+    if raw.startswith("postgresql://"):
+        raw = "postgresql+asyncpg://" + raw[len("postgresql://"):]
+    return raw
+
+
+DATABASE_URL: str = _normalize_async_url(os.environ["DATABASE_URL"])
 
 engine = create_async_engine(
     DATABASE_URL,
